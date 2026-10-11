@@ -1,0 +1,73 @@
+# ---------------------------------------------------------------------------
+# Nothing large or secret goes in git. Data, bags and weights live on
+# HF Hub / Drive / the training servers (see data/README.md).
+# ---------------------------------------------------------------------------
+
+# Secrets: only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# Local fork copies (temporary). They become submodules at
+# ros_ws/src/go2_ros2_sdk and third_party/NaVILA once the forks are pushed.
+/go2_sdk/
+/NaVila/
+
+# Model weights and checkpoints
+*.safetensors
+*.pth
+*.pt
+*.ckpt
+*.bin
+*.onnx
+*.engine
+*.gguf
+*.h5
+*.tflite
+checkpoints/
+weights/
+.cache/huggingface/
+
+# Datasets: data/ only keeps its README and the episode schema
+data/*
+!data/README.md
+!data/schema/
+NaVILA-Dataset/
+DeePoint/
+
+# Recordings (rosbag2) and media
+*.mcap
+*.db3
+rosbag2_*/
+bags/
+*.mp4
+*.avi
+*.mkv
+tts_cache/
+
+# Training / eval outputs
+output/
+outputs/
+runs/
+wandb/
+eval_out/
+*.log
+
+# ROS 2 / colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Editors / tools
+.vscode/
+.idea/
+.DS_Store
+.claude/settings.local.json
