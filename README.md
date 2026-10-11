@@ -82,6 +82,8 @@ The modified forks currently sit untracked in the repo root, and the images read
 
 ## Rules
 
+Branching and commit conventions: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 - Never commit data, bags, checkpoints or `.env`. Data lives on HF Hub / Drive / the servers (`data/README.md`).
 - Every new topic goes in `configs/topics.yaml` first.
 - Every new workflow gets a `make` target and a line in this README.
