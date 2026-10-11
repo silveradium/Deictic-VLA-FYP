@@ -1,0 +1,22 @@
+# Roxy (Go2 Air) parameters, loaded by deictic_bringup. configs/ is mounted into the
+# containers, so edits apply on the next `make infer` without a rebuild.
+
+navila_node:
+  ros__parameters:
+    # Mid-level controller: NaVILA text -> closed-loop velocity on odometry.
+    # Cruise speeds. NaVILA's paper uses 30 deg/s, but Roxy only reaches 24 deg/s at that
+    # command; 45 deg/s gives a real 40 deg/s.
+    lin_speed: 0.5          # m/s
+    ang_speed_deg: 45.0     # deg/s
+    # Slow-down floor near the target: must be a speed the robot actually follows, or steps
+    # stall short of the target until the timeout (9 deg/s made 45 deg turns take ~7.5 s).
+    # `make calibrate` on Roxy (2026-10-12), commanded -> measured turn rate:
+    #   6-15 -> 0-1,  20 -> 3,  25 -> 9,  30 -> 24,  45 -> 40 deg/s;  StopMove coast <= 4.5 deg
+    min_lin_speed: 0.15     # m/s, not calibrated yet (make calibrate FORWARD=1)
+    min_ang_speed_deg: 30.0 # deg/s
+    timeout_factor: 3.0     # give up after factor * nominal duration + 2 s
+    # Hard clamps on anything sent to cmd_vel
+    max_lin: 0.5            # m/s
+    max_ang: 0.8            # rad/s
+    # Go2 front camera is 16:9; NaVILA squares every frame (crop = center square, squash = full FOV)
+    image_mode: crop

@@ -1,0 +1,9 @@
+# Mode overlay for `make infer` (with ros.yml + navila.yml): Go2 bridge + teleop +
+# NaVILA server on this machine + navila_node. The joystick keeps priority over NaVILA
+# through twist_mux. NAVILA_MOTION=true to move (the Makefile sets it from MOTION=1).
+services:
+  bringup:
+    command: >-
+      ros2 launch deictic_bringup bringup.launch.py mode:=infer
+      enable_motion:=${NAVILA_MOTION:-false}
+      camera_topic:=${NAVILA_CAMERA_TOPIC:-camera/image_raw}
