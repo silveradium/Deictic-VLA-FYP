@@ -1,0 +1,32 @@
+# Single source of truth for topic names, types and QoS.
+# Add a topic here before any node publishes or subscribes to it.
+#
+#   qos: reliable     = QoSProfile(depth=10)
+#        best_effort  = BEST_EFFORT, KEEP_LAST (sensor data)
+#   from: machine / node that publishes it
+#
+# Names are the go2_ros2_sdk single-robot names (one ROBOT_IP). With several IPs the
+# driver prefixes them with robot0/, robot1/, ...
+
+go2:  # go2_ros2_sdk driver, on the workstation or laptop (WebRTC to the robot)
+  odom:              {type: nav_msgs/msg/Odometry,          qos: reliable,    from: go2_driver_node}
+  imu:               {type: go2_interfaces/msg/IMU,         qos: reliable,    from: go2_driver_node}
+  joint_states:      {type: sensor_msgs/msg/JointState,     qos: reliable,    from: go2_driver_node}
+  go2_states:        {type: go2_interfaces/msg/Go2State,    qos: reliable,    from: go2_driver_node}
+  point_cloud2:      {type: sensor_msgs/msg/PointCloud2,    qos: best_effort, from: go2_driver_node}
+  scan:              {type: sensor_msgs/msg/LaserScan,      qos: best_effort, from: pointcloud_to_laserscan}
+  camera/image_raw:  {type: sensor_msgs/msg/Image,          qos: best_effort, from: go2_driver_node, note: Go2 front camera}
+  camera/camera_info: {type: sensor_msgs/msg/CameraInfo,    qos: best_effort, from: go2_driver_node}
+
+cmd:  # velocity chain: twist_mux picks the highest-priority live input
+  cmd_vel_joy:       {type: geometry_msgs/msg/Twist, qos: reliable, from: go2_teleop_node, note: joystick, twist_mux priority 10}
+  cmd_vel:           {type: geometry_msgs/msg/Twist, qos: reliable, from: navila_node,     note: infer mode (enable_motion), twist_mux priority 5, 0.5 s timeout}
+  cmd_vel_out:       {type: geometry_msgs/msg/Twist, qos: reliable, from: twist_mux,       note: the only velocity input the driver reads}
+  joy:               {type: sensor_msgs/msg/Joy,     qos: reliable, from: joy_node}
+
+navila:  # infer mode
+  navila/instruction: {type: std_msgs/msg/String, qos: reliable, from: make instruct / audio_stt, note: '"stop" ends the episode'}
+  navila/decision:    {type: std_msgs/msg/String, qos: reliable, from: navila_node, note: NaVILA's raw text per decision}
+
+# camera:  Orbbec Gemini 335 on the Pi. Added in build step 2, once the driver package is fixed.
+# episode: recorder start/stop markers. Added in build step 4 (deictic_interfaces).

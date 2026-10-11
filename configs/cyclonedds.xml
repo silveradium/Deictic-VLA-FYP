@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CycloneDDS config for every ROS container (CYCLONEDDS_URI, see docker/compose/ros.yml).
+
+  Unicast-only discovery, no multicast:
+  - Multicast over Wi-Fi is slow and lossy, and on the workstation ufw + k3s firewall
+    rules drop looped-back multicast, which broke discovery between local processes and
+    hung every ROS process on exit.
+  - Processes on this machine (incl. containers on the host network) find each other over
+    lo. Other machines are listed as peers: PI_IP from .env.
+  - ParticipantIndex auto gives each process a fixed port pair; the default limit (9) is
+    too low for bringup's 10+ nodes, hence MaxAutoParticipantIndex.
+
+  DDS_IFACE (required, in .env) is the interface on the robot/Pi LAN, e.g. wlp7s0 (find it
+  with `ip route get 1.1.1.1`). Not auto-selected: the workstation has 7 candidates (Wi-Fi,
+  tailscale0, docker0, k3s bridges). Never tailscale0: remote demos use zenoh (configs/zenoh).
+
+  The firewall must let the Pi's DDS traffic in: docs/runbooks/dds.md.
+-->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="lo" />
+        <NetworkInterface name="${DDS_IFACE}" />
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+      <Peers>
+        <Peer address="localhost" />
+        <Peer address="${PI_IP:-localhost}" />
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
