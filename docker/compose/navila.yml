@@ -1,0 +1,31 @@
+# Building block: NaVILA high-level policy server over HTTP (GPU machine). The fork's
+# code and the weights are mounted, not baked in. See ros.yml for how files combine.
+name: deictic
+
+services:
+  navila_server:
+    image: deictic/navila:latest
+    build:
+      context: docker/navila
+      additional_contexts:
+        navila: ${NAVILA_DIR:-./NaVila/NaVILA}
+    network_mode: host  # listens on all interfaces, incl. Tailscale for remote demos
+    volumes:
+      - ${NAVILA_DIR:-./NaVila/NaVILA}:/workspace/NaVILA:ro
+      - ${NAVILA_CHECKPOINTS_DIR:-./NaVila/NaVILA/checkpoints}:/checkpoints:ro
+    command: >-
+      python navila_go2/server/navila_server.py
+      --model-path /checkpoints/${NAVILA_MODEL:-navila-llama3-8b-8f}
+      --precision ${NAVILA_PRECISION:-4bit}
+      --host 0.0.0.0 --port ${NAVILA_PORT:-8000}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${NAVILA_PORT:-8000}/health')"]
+      interval: 10s
+      start_period: 300s
