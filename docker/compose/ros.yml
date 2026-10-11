@@ -1,0 +1,34 @@
+# Building block: the robot-side ROS container. Combined with a mode overlay by the
+# Makefile (docker compose --project-directory . -f ros.yml [-f navila.yml] -f <mode>.yml),
+# so relative paths are relative to the repo root and .env there is read for ${...}.
+name: deictic
+
+services:
+  # Robot side: go2 WebRTC bridge + teleop (+ recorder / navila_node later)
+  bringup:
+    image: deictic/ros:humble
+    build:
+      context: .
+      dockerfile: docker/ros/Dockerfile
+      additional_contexts:
+        go2_sdk: ${GO2_SDK_DIR:-./go2_sdk/src}
+        navila: ${NAVILA_DIR:-./NaVila/NaVILA}
+    network_mode: host  # DDS discovery + WebRTC to the robot
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      CYCLONEDDS_URI: file:///deictic/configs/cyclonedds.xml
+      DDS_IFACE: ${DDS_IFACE:-}  # required at run time, checked by the entrypoint
+      PI_IP: ${PI_IP:-}  # unicast DDS peer
+      ROBOT_IP: ${GO2_IP:-}
+      ROBOT_AES_KEY: ${GO2_AES_KEY:-}
+      CONN_TYPE: ${GO2_CONN_TYPE:-webrtc}
+      NAVILA_SERVER_URL: ${NAVILA_SERVER_URL:-http://127.0.0.1:8000}
+    volumes:
+      - ./configs:/deictic/configs:ro
+      - /dev/input:/dev/input  # joystick, mounted (not passed as a device) so hot-plug works
+      - /run/udev:/run/udev:ro
+    device_cgroup_rules:
+      - "c 13:* rmw"  # input devices
+    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect
+    stop_signal: SIGINT  # lets ros2 launch shut the nodes down cleanly
