@@ -18,7 +18,7 @@ publishes what over which link.
 | Link | Transport | Carries | Notes |
 |---|---|---|---|
 | Go2 ↔ bridge | WebRTC over Wi-Fi | odom, imu, lidar, state, front camera; velocity commands | STA-L: the bridge must be on the robot's LAN. Per-device AES-128 key. |
-| Pi → bridge machine | DDS (CycloneDDS, unicast peers) | Orbbec RGB + depth | Same `ROS_DOMAIN_ID`, `PI_IP` as peer, firewall rule ([runbooks/dds.md](runbooks/dds.md)) |
+| Pi → bridge machine | DDS (CycloneDDS, unicast peers) | Orbbec colour as JPEG (`orbbec/color/image_raw/compressed`, 15 Hz, ~6 Mbit/s); depth once the Pi has a 5 A supply | Same `ROS_DOMAIN_ID`, `PI_IP` / `BRIDGE_IP` as peers, firewall rule ([runbooks/dds.md](runbooks/dds.md)). Bringup decodes the JPEG to `orbbec/color/image_decoded` for NaVILA |
 | Mic → bridge machine | USB / ALSA | audio | STT runs on the bridge machine (step 3) |
 | navila_node → NaVILA server | HTTP (JSON + JPEG frames) | `/act`, `/health` | Works over Tailscale as is: no DDS needed on this link |
 | Remote demo, ROS topics | zenoh-bridge-ros2dds | selected topics, compressed images | Step 7. DDS can't cross Tailscale (no multicast) |

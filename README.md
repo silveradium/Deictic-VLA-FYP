@@ -76,7 +76,7 @@ The modified forks currently sit untracked in the repo root, and the images read
 
 - [x] 0. Skeleton
 - [ ] 1. `docker/ros` + go2_ros2_sdk, robot topics visible on the workstation (image and bringup work, untested with the robot)
-- [ ] 2. `docker/pi` arm64 image + Orbbec topics
+- [x] 2. `docker/pi` arm64 image + Orbbec topics (tested on the Pi: colour 15 Hz + bringup decode; depth needs the 5 A supply)
 - [ ] 3. `topics.yaml` + `deictic_bringup mode:=collect`, teleop + mic STT
 - [ ] 4. `recorder` with episode markers, `make collect` end to end, same image on the 24.04 laptop
 - [ ] 5. `data_pipeline/real`: bag -> canonical episodes (define `data/schema` first)
