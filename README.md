@@ -17,6 +17,8 @@ make infer        # same + NaVILA server (GPU machine)
 make help         # all targets
 ```
 
+On the Pi: `make .env`, set `DDS_IFACE`, `PI_IP` and `BRIDGE_IP`, then `make pi-up` ([robot/pi](robot/pi/README.md)).
+
 Requires Docker with Compose v2. GPU machines also need `nvidia-container-toolkit`. DDS setup and the
 firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 
@@ -52,7 +54,7 @@ docker/
   compose/        building blocks (ros.yml, navila.yml) + mode overlays (collect.yml, infer.yml)
 ros_ws/src/       deictic_bringup, deictic_interfaces, audio_stt, recorder, teleop, navila_node
 third_party/      NaVILA fork (submodule, pending)
-robot/            Pi and Jetson setup
+robot/            pi/ (deictic_pi package + setup guide), jetson/
 data/             gitignored except README.md and schema/
 data_pipeline/    real/ (bag -> episodes), deepoint/, export/, validate/
 training/         LoRA configs, job scripts, envs for aberdeen / the Singapore cluster
