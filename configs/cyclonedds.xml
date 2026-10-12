@@ -6,9 +6,14 @@
   - Multicast over Wi-Fi is slow and lossy, and on the workstation ufw + k3s firewall
     rules drop looped-back multicast, which broke discovery between local processes and
     hung every ROS process on exit.
-  - Processes on this machine (incl. containers on the host network) find each other over
-    lo. Other machines are listed as peers from .env: PI_IP (the Pi, for the bringup machine)
-    and BRIDGE_IP (the bringup machine, for the Pi). Unset peers fall back to localhost.
+  - Processes on this machine (incl. containers on the host network) find each other through
+    the localhost peer. Other machines are listed as peers from .env: PI_IP (the Pi, for the
+    bringup machine) and BRIDGE_IP (the bringup machine, for the Pi). Unset peers fall back to
+    localhost.
+  - DDS_IFACE is the only interface, without lo: with lo in the list, Cyclone 0.10 sends
+    discovery to other machines through the loopback socket, which Linux refuses
+    ("ddsi_udp_conn_write ... failed with retcode -3"), so the machines never meet. Local
+    traffic still reaches localhost from DDS_IFACE.
   - ParticipantIndex auto gives each process a fixed port pair; the default limit (9) is
     too low for bringup's 10+ nodes, hence MaxAutoParticipantIndex.
 
@@ -22,7 +27,6 @@
   <Domain Id="any">
     <General>
       <Interfaces>
-        <NetworkInterface name="lo" />
         <NetworkInterface name="${DDS_IFACE}" />
       </Interfaces>
       <AllowMulticast>false</AllowMulticast>

@@ -47,8 +47,9 @@ make pi-shell     # then: ros2 topic hz /orbbec/color/image_raw   (expect ~15)
 make pi-down      # stop
 ```
 
-Depth: `make pi-shell`, then run `ros2 launch deictic_pi pi.launch.py enable_depth:=true` after
-`make pi-down` (5 A supply only).
+Depth (5 A supply only): set `PI_DEPTH=true` in the Pi's `.env`, then `make pi-up`. Don't start a
+second `ros2 launch` inside `make pi-shell`: two drivers fight over the camera and it keeps dropping
+off USB.
 
 On the bringup machine:
 - Check the stream with `make ros-shell`, then
