@@ -85,7 +85,7 @@ voice-preset: ## Switch Roxy's voice while it runs (VOICE=true): PRESET=scooby|r
 # --- live demo: venue laptop + remote GPU (docs/runbooks/live-demo.md) -------
 demo-gpu: ## Live demo, workstation: NaVILA server for the venue laptop, over Tailscale
 	@ip=$$(tailscale ip -4 2>/dev/null | head -1); port=$$(grep -oP '^NAVILA_PORT=\K[0-9]+' .env 2>/dev/null || echo 8000); \
-	echo "On the laptop, in .env: NAVILA_SERVER_URL=http://$${ip:-<this machine's Tailscale IP>}:$$port"
+	echo "On the laptop, in .env: NAVILA_SERVER_URL=http://$${ip:-TAILSCALE_IP}:$$port"
 	$(STACK_NAVILA) up
 
 demo-site: ## Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA via the workstation (MOTION=1 to move)
