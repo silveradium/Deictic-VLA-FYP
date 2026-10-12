@@ -18,6 +18,10 @@ in as ROBOT_IP / ROBOT_AES_KEY by docker/compose/ros.yml).
 The Orbbec on the Pi (`make pi-up`) sends only its JPEG stream over Wi-Fi; orbbec_decode turns
 it back into a raw image here, orbbec/color/image_decoded, which navila_node reads when
 NAVILA_CAMERA_TOPIC points at it. Without the Pi it just waits.
+
+stt:=true (both modes) listens to the mic on this machine: stt_node transcribes, and wake_router
+sends "Hey Roxy, <instruction>" to navila/instruction and any sentence starting with "stop" at
+once (audio_stt). Set STT=false in .env on a machine without the mic.
 """
 
 from launch import LaunchDescription
@@ -73,6 +77,22 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("orbbec")),
     )
 
+    stt = IfCondition(LaunchConfiguration("stt"))
+    stt_node = Node(
+        package="audio_stt",
+        executable="stt_node",
+        output="screen",
+        condition=stt,
+        parameters=[LaunchConfiguration("robot_config")],
+    )
+    wake_router = Node(
+        package="audio_stt",
+        executable="wake_router",
+        output="screen",
+        condition=stt,
+        parameters=[LaunchConfiguration("robot_config")],
+    )
+
     navila = Node(
         package="navila_node",
         executable="navila_node",
@@ -92,6 +112,8 @@ def generate_launch_description():
         DeclareLaunchArgument("joystick", default_value="true", description="joy_node + teleop_twist_joy"),
         DeclareLaunchArgument("robot_config", default_value="/deictic/configs/robots/roxy.yaml",
                               description="Robot parameters (configs/robots/, mounted in the container)"),
+        DeclareLaunchArgument("stt", default_value="true",
+                              description="Mic speech-to-text + 'Hey Roxy' -> navila/instruction"),
         DeclareLaunchArgument("orbbec", default_value="true",
                               description="Decode the Pi's Orbbec JPEG stream to orbbec/color/image_decoded"),
         DeclareLaunchArgument("camera_topic", default_value="camera/image_raw",
@@ -103,5 +125,7 @@ def generate_launch_description():
         joy,
         teleop,
         orbbec_decode,
+        stt_node,
+        wake_router,
         navila,
     ])
