@@ -56,6 +56,8 @@ second `ros2 launch` inside `make pi-shell`: two drivers fight over the camera a
 off USB.
 
 On the bringup machine:
+- Watch the feed with `make orbbec-view`, then open http://localhost:8090. It also shows the
+  resolution, fps and horizontal/vertical FOV, worked out from `camera_info`.
 - Check the stream with `make ros-shell`, then
   `ros2 topic hz /orbbec/color/image_raw/compressed`.
 - To give NaVILA the Orbbec, set `NAVILA_CAMERA_TOPIC=orbbec/color/image_decoded` in `.env`.

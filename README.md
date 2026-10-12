@@ -12,7 +12,7 @@ is who publishes `cmd_vel`.
 ```bash
 make setup        # .env from .env.example, submodules, build the x86 images
 $EDITOR .env      # GO2_IP, GO2_AES_KEY (per-device, firmware >= 1.1.15), DDS_IFACE
-make collect      # Go2 bridge + joystick teleop
+make collect      # data collection from the terminal: Enter, speak, Enter, drive, Ctrl-C; one bag per episode
 make infer        # same + NaVILA server (GPU machine)
 make help         # all targets
 ```
@@ -32,7 +32,9 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 |---|---|
 | `make setup` | Create `.env`, fetch submodules, build all x86 images |
 | `make build-ros` / `make build-navila` | Build one image |
-| `make collect` | Collection stack: Go2 bridge + joystick teleop |
+| `make collect` | Data collection: starts bringup (Go2, mic) if needed, then the terminal recorder, one bag per episode ([docs/collection_protocol.md](docs/collection_protocol.md)) |
+| `make logs` | Follow the bringup logs (Go2 bridge, STT) in a second terminal |
+| `make preview` | Look inside a session's episode bags: video, odometry path, labels, every topic (`SESSION=...`, default latest) |
 | `make infer` | Inference stack: collection stack + NaVILA server + navila_node. Dry run; `MOTION=1` to move |
 | `make instruct TEXT="..."` | Give NaVILA an instruction (while `make infer` runs) |
 | `make navila-stop` | End the NaVILA episode, robot holds still |
@@ -62,7 +64,7 @@ docker/
   navila/         CUDA + NaVILA server deps; code and weights are mounted
   pi/             arm64 Humble + Orbbec driver (step 2)
   compose/        building blocks (ros.yml, navila.yml) + mode overlays (collect.yml, infer.yml)
-ros_ws/src/       deictic_bringup, deictic_interfaces, audio_stt, voice, recorder, teleop, navila_node
+ros_ws/src/       deictic_bringup, deictic_interfaces, audio_stt, voice, recorder (terminal collection, one bag per episode), teleop, navila_node
 third_party/      NaVILA fork (submodule, pending)
 robot/            pi/ (deictic_pi package + setup guide), jetson/
 data/             gitignored except README.md and schema/
@@ -88,7 +90,8 @@ The modified forks currently sit untracked in the repo root, and the images read
 - [ ] 1. `docker/ros` + go2_ros2_sdk, robot topics visible on the workstation (image and bringup work, untested with the robot)
 - [x] 2. `docker/pi` arm64 image + Orbbec topics (tested on the Pi: colour 15 Hz + bringup decode; depth needs the 5 A supply)
 - [ ] 3. `topics.yaml` + `deictic_bringup mode:=collect`, teleop + mic STT (mic STT + "Hey Roxy" in `audio_stt`: nodes tested on the Pi, not yet in the workstation stack)
-- [ ] 4. `recorder` with episode markers, `make collect` end to end, same image on the 24.04 laptop
+- [ ] 4. `recorder`: terminal collection, one bag per episode, `make preview` (tested on the laptop through a real
+  terminal with simulated camera + odom and the real mic; not yet a full episode with Roxy and the Pi)
 - [ ] 5. `data_pipeline/real`: bag -> canonical episodes (define `data/schema` first)
 - [ ] 6. `docker/navila` + `navila_node` + `mode:=infer` (pretrained). Server image done and tested
 - [ ] 7. Remote demo: `make demo-gpu` (workstation) + `make demo-site` (venue laptop), NaVILA over HTTP on

@@ -48,4 +48,5 @@ voice:  # spoken replies (ros_ws/src/voice on the bringup machine, speaker on th
   voice/speaking: {type: std_msgs/msg/Bool,            qos: latched,  from: Pi speaker_node, note: true while the Pi speaker plays}
   voice/preset:   {type: std_msgs/msg/String,          qos: latched,  from: tts_node, note: 'scooby | robot; dialog_node talks in the matching style'}
 
-# episode: recorder start/stop markers. Added in build step 4 (deictic_interfaces).
+episode:  # data collection (ros_ws/src/recorder, `make collect`)
+  episode/event:   {type: std_msgs/msg/String, qos: reliable, from: recorder (collect), note: 'JSON per listen / go / end, also written into each episode bag; the instruction is in go'}

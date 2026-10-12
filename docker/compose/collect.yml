@@ -1,5 +1,32 @@
-# Mode overlay for `make collect` (with ros.yml): Go2 bridge + joystick teleop.
-# Recorder joins in build step 4. Mic STT runs unless STT=false. Camera topics come from the Pi.
+# Mode overlay for `make collect` (with ros.yml): Go2 bridge + joystick teleop, and the recorder.
+# Mic STT runs unless STT=false. Camera topics come from the Pi.
 services:
   bringup:
     command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} voice:=${VOICE:-false}
+
+  # Terminal data collection, one bag per episode (ros_ws/src/recorder/recorder/collect.py).
+  # Interactive: `make collect` runs it in the foreground after starting bringup; `up` never starts it.
+  # Its own container, so quitting it never drops the Go2's WebRTC link. Runs as you, so the bags
+  # in DATA_DIR are yours, not root's.
+  recorder:
+    image: deictic/ros:humble  # built by bringup (make build-ros)
+    profiles: [cli]
+    stdin_open: true
+    tty: true
+    network_mode: host
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      CYCLONEDDS_URI: file:///deictic/configs/cyclonedds.xml
+      DDS_IFACE: ${DDS_IFACE:-}
+      PI_IP: ${PI_IP:-}
+      BRIDGE_IP: ${BRIDGE_IP:-}
+      HOME: /tmp  # no home directory for HOST_UID in the image: ROS logs go to /tmp/.ros
+    volumes:
+      - ./configs:/deictic/configs:ro
+      - /etc/localtime:/etc/localtime:ro  # session names in local time
+      - ${DATA_DIR:-./data}:/deictic/data
+      - ./data_pipeline:/deictic/data_pipeline:ro  # make preview
+    # run directly, not through `ros2 run`, so Ctrl-C reaches it (it ends the episode)
+    command: /ros2_ws/install/recorder/lib/recorder/collect --ros-args --params-file /deictic/configs/robots/roxy.yaml

@@ -12,9 +12,15 @@ STACK_NAVILA  := $(COMPOSE)/navila.yml
 STACK_SITE    := $(COMPOSE)/ros.yml -f docker/compose/infer.yml
 STACK_PI      := $(COMPOSE)/pi.yml
 
+# The recorder container runs as you, so recorded sessions in DATA_DIR are not root's
+export HOST_UID := $(shell id -u)
+export HOST_GID := $(shell id -g)
+DATA_DIR := $(or $(shell grep -oP '^DATA_DIR=\K\S+' .env 2>/dev/null),./data)
+
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
         instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
         demo-gpu demo-site navila-health build-pi pi-up pi-down pi-logs pi-shell \
+        logs preview orbbec-view \
         demo-site demo-gpu bag2ep export train-submit
 
 help: ## List targets
@@ -38,8 +44,13 @@ build-navila: ## Build the NaVILA CUDA image
 	$(STACK_NAVILA) build navila_server
 
 # --- run ---------------------------------------------------------------------
-collect: ## Collection stack: Go2 bridge + teleop (Ctrl-C to stop)
-	$(STACK_COLLECT) up
+collect: ## Collect data: starts bringup (Go2, mic) if needed, then the terminal recorder, one bag per episode
+	@mkdir -p $(DATA_DIR)/sessions
+	$(STACK_COLLECT) up -d bringup
+	$(STACK_COLLECT) run --rm recorder
+
+logs: ## Follow the bringup logs (Go2 bridge, STT) while `make collect` runs, in a second terminal
+	$(STACK_COLLECT) logs -f --tail 50 bringup
 
 infer: ## Inference stack: Go2 bridge + teleop + NaVILA (dry run; MOTION=1 to move)
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_INFER) up
@@ -81,6 +92,19 @@ say: ## Make Roxy speak through the Pi speaker (VOICE=true): TEXT="Ruh-roh, hell
 voice-preset: ## Switch Roxy's voice while it runs (VOICE=true): PRESET=scooby|robot
 	@test -n "$(PRESET)" || { echo 'usage: make voice-preset PRESET=robot'; exit 1; }
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 param set /tts_node voice_preset $(PRESET)
+
+orbbec-view: ## Watch the Pi's Orbbec colour feed in a browser, with its FOV (http://localhost:8090; PORT=...)
+	$(STACK_COLLECT) run --rm --no-deps -v $(CURDIR)/scripts:/deictic/scripts:ro bringup \
+		python3 /deictic/scripts/orbbec_view.py --port $(or $(PORT),8090)
+
+# --- data collection (docs/collection_protocol.md) -----------------------------
+preview: ## Look inside a session's episode bags: video, odom path, labels, topics (SESSION=..., default latest)
+	@s="$(SESSION)"; [ -n "$$s" ] || s=$$(ls -1 $(DATA_DIR)/sessions 2>/dev/null | tail -1); \
+	test -n "$$s" || { echo "no sessions in $(DATA_DIR)/sessions"; exit 1; }; \
+	$(STACK_COLLECT) run --rm --no-deps -T recorder python3 /deictic/data_pipeline/validate/preview.py \
+		/deictic/data/sessions/$$s \
+	&& echo "open $(DATA_DIR)/sessions/$$s/preview/index.html" \
+	&& (xdg-open "$(DATA_DIR)/sessions/$$s/preview/index.html" >/dev/null 2>&1 &)
 
 # --- live demo: venue laptop + remote GPU (docs/runbooks/live-demo.md) -------
 demo-gpu: ## Live demo, workstation: NaVILA server for the venue laptop, over Tailscale

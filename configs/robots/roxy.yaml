@@ -25,7 +25,7 @@ navila_node:
 stt_node:
   ros__parameters:
     mic_device: MINI              # name substring of the DJI receiver, an index, "pulse" or "default"
-    model_arch: medium-streaming  # Moonshine; small-streaming if the CPU can't keep up
+    model_arch: small-streaming  # Moonshine; small-streaming if the CPU can't keep up
     keyterms: [Roxy, Hey Roxy]    # biases recognition towards the robot's name
     unmute_delay: 0.5             # s the mic stays muted after Roxy stops speaking (stt/mute)
 
@@ -58,3 +58,24 @@ tts_node:
     voice_preset: scooby               # scooby | robot; `make voice-preset PRESET=robot` while running
     piper_voice: en_US-ryan-medium     # downloaded into the ROS image (docker/ros/Dockerfile)
     piper_voices_dir: /opt/piper-voices
+
+# Data collection (ros_ws/src/recorder): `make collect`, one bag per episode
+recorder:
+  ros__parameters:
+    listen_grace_s: 1.0  # s after the second Enter for the last spoken sentence to come out of STT
+    # Recorded during every episode (~0.9 MB/s, mostly the Orbbec JPEGs). Raw image topics stay
+    # out: orbbec/color/image_raw would pull 14 MB/s over Wi-Fi, camera/image_raw is 40 MB/s.
+    topics:
+      - /orbbec/color/image_raw/compressed
+      - /orbbec/color/camera_info
+      - /odom
+      - /imu
+      - /go2_states
+      - /joint_states
+      - /tf
+      - /tf_static
+      - /scan
+      - /cmd_vel_out
+      - /cmd_vel_joy
+      - /joy
+      - /stt/transcript
