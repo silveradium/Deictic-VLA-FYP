@@ -12,7 +12,7 @@ STACK_NAVILA  := $(COMPOSE)/navila.yml
 STACK_PI      := $(COMPOSE)/pi.yml
 
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
-        instruct navila-stop robot-stop calibrate build-pi pi-up pi-down pi-logs pi-shell \
+        instruct navila-stop robot-stop calibrate stt-echo build-pi pi-up pi-down pi-logs pi-shell \
         demo-site demo-gpu bag2ep export train-submit
 
 help: ## List targets
@@ -67,6 +67,9 @@ robot-stop: ## Send the robot Unitree's StopMove directly (any running stack)
 calibrate: ## Measure the robot's real turn rates (with `make collect`; FORWARD=1 also walks)
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 run navila_node calibrate_motion \
 		--ros-args -p forward:=$(if $(FORWARD),true,false)
+
+stt-echo: ## Print what the mic hears (stt/transcript) while collect / infer runs
+	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 topic echo /stt/transcript std_msgs/msg/String
 
 # --- Pi (run these on the Pi; robot/pi/README.md) ------------------------------
 build-pi: ## On the Pi: build the Pi image (arm64 Humble + Orbbec driver)
