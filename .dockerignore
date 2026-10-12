@@ -1,7 +1,9 @@
-# Build context is the repo root; images only need ros_ws/src and docker/.
-# The forks come in as named build contexts, never through this one.
+# Build context is the repo root; images only need ros_ws/src (x86), robot/pi/deictic_pi (Pi)
+# and their entrypoints. The forks come in as named build contexts, never through this one.
 **
 !ros_ws/src/
 !docker/ros/entrypoint.sh
+!robot/pi/deictic_pi/
+!docker/pi/entrypoint.sh
 **/__pycache__
 **/.gitkeep
