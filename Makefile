@@ -9,9 +9,11 @@ COMPOSE := docker compose --project-directory . -f docker/compose
 STACK_COLLECT := $(COMPOSE)/ros.yml -f docker/compose/collect.yml
 STACK_INFER   := $(COMPOSE)/ros.yml -f docker/compose/navila.yml -f docker/compose/infer.yml
 STACK_NAVILA  := $(COMPOSE)/navila.yml
+STACK_PI      := $(COMPOSE)/pi.yml
 
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
-        instruct navila-stop robot-stop calibrate pi-up demo-site demo-gpu bag2ep export train-submit
+        instruct navila-stop robot-stop calibrate build-pi pi-up pi-down pi-logs pi-shell \
+        demo-site demo-gpu bag2ep export train-submit
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -66,10 +68,24 @@ calibrate: ## Measure the robot's real turn rates (with `make collect`; FORWARD=
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 run navila_node calibrate_motion \
 		--ros-args -p forward:=$(if $(FORWARD),true,false)
 
-# --- not implemented yet (build order in README) -----------------------------
-pi-up: ## [step 2] On the Pi: start the Orbbec camera container
-	@echo "pi-up: not implemented yet (build step 2)"; exit 1
+# --- Pi (run these on the Pi; robot/pi/README.md) ------------------------------
+build-pi: ## On the Pi: build the Pi image (arm64 Humble + Orbbec driver)
+	$(STACK_PI) build pi
 
+pi-up: ## On the Pi: start the Orbbec camera in the background (comes back after a reboot)
+	$(STACK_PI) up -d
+	@echo "Camera starting: make pi-logs to follow it"
+
+pi-down: ## On the Pi: stop the camera container
+	$(STACK_PI) down
+
+pi-logs: ## On the Pi: follow the camera container's logs
+	$(STACK_PI) logs -f pi
+
+pi-shell: ## On the Pi: shell in the running camera container (ros2 topic hz ...)
+	$(STACK_PI) exec pi /entrypoint.sh bash
+
+# --- not implemented yet (build order in README) -----------------------------
 demo-site: ## [step 7] Remote demo, robot site half (laptop)
 	@echo "demo-site: not implemented yet (build step 7)"; exit 1
 
