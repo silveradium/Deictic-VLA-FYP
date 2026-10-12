@@ -7,7 +7,8 @@
     rules drop looped-back multicast, which broke discovery between local processes and
     hung every ROS process on exit.
   - Processes on this machine (incl. containers on the host network) find each other over
-    lo. Other machines are listed as peers: PI_IP from .env.
+    lo. Other machines are listed as peers from .env: PI_IP (the Pi, for the bringup machine)
+    and BRIDGE_IP (the bringup machine, for the Pi). Unset peers fall back to localhost.
   - ParticipantIndex auto gives each process a fixed port pair; the default limit (9) is
     too low for bringup's 10+ nodes, hence MaxAutoParticipantIndex.
 
@@ -32,6 +33,7 @@
       <Peers>
         <Peer address="localhost" />
         <Peer address="${PI_IP:-localhost}" />
+        <Peer address="${BRIDGE_IP:-localhost}" />
       </Peers>
     </Discovery>
   </Domain>
