@@ -12,7 +12,8 @@ STACK_NAVILA  := $(COMPOSE)/navila.yml
 STACK_PI      := $(COMPOSE)/pi.yml
 
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
-        instruct navila-stop robot-stop calibrate stt-echo build-pi pi-up pi-down pi-logs pi-shell \
+        instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
+        build-pi pi-up pi-down pi-logs pi-shell \
         demo-site demo-gpu bag2ep export train-submit
 
 help: ## List targets
@@ -70,6 +71,15 @@ calibrate: ## Measure the robot's real turn rates (with `make collect`; FORWARD=
 
 stt-echo: ## Print what the mic hears (stt/transcript) while collect / infer runs
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 topic echo /stt/transcript std_msgs/msg/String
+
+say: ## Make Roxy speak through the Pi speaker (VOICE=true): TEXT="Ruh-roh, hello!"
+	@test -n "$(TEXT)" || { echo 'usage: make say TEXT="Ruh-roh, hello!"'; exit 1; }
+	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 topic pub --once -w 1 \
+		/voice/say std_msgs/msg/String "{data: \"$(TEXT)\"}"
+
+voice-preset: ## Switch Roxy's voice while it runs (VOICE=true): PRESET=scooby|robot
+	@test -n "$(PRESET)" || { echo 'usage: make voice-preset PRESET=robot'; exit 1; }
+	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 param set /tts_node voice_preset $(PRESET)
 
 # --- Pi (run these on the Pi; robot/pi/README.md) ------------------------------
 build-pi: ## On the Pi: build the Pi image (arm64 Humble + Orbbec driver)

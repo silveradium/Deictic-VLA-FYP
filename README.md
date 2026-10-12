@@ -35,6 +35,8 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 | `make robot-stop` | Send the robot a direct StopMove |
 | `make calibrate` | Measure the robot's real turn (and with `FORWARD=1` walk) speeds, for `configs/robots/roxy.yaml` |
 | `make stt-echo` | Print what the mic hears (`stt/transcript`) while `make collect` / `make infer` runs |
+| `make say TEXT="..."` | Make Roxy speak through the Pi speaker (`VOICE=true`) |
+| `make voice-preset PRESET=robot` | Switch Roxy's voice (`scooby` / `robot`) while it runs |
 | `make navila-server` | NaVILA server alone (GPU machine) |
 | `make ros-shell` | Shell in the ROS image on the host network, for `ros2 topic list` etc. |
 | `make down` | Stop every stack |
