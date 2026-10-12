@@ -18,7 +18,11 @@ import time
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import String
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Bool, String
+
+LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                     durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 # Words that alone don't make a request ("Hey Roxy, um." is the wake phrase alone). Not "there":
 # with a pointing gesture, "Hey Roxy, there!" is an instruction.
@@ -47,9 +51,16 @@ class WakeRouter(Node):
         self.request_pub = self.create_publisher(String, "stt/request", 10)
         self.instruction_pub = self.create_publisher(String, "navila/instruction", 10)
         self.create_subscription(String, "stt/transcript", self.on_transcript, 10)
+        self.create_subscription(Bool, "stt/mute", self.on_mute, LATCHED)
         self.get_logger().info(
             f"waiting for 'Hey Roxy, ...'; requests {'go' if self.forward else 'do not go'} "
             f"to navila/instruction")
+
+    def on_mute(self, msg):
+        # Roxy just finished speaking (e.g. "Yes?" after a bare "Hey Roxy"): the follow-up
+        # window starts now, not while the mic was muted
+        if not msg.data and self.deadline > time.monotonic():
+            self.deadline = time.monotonic() + self.window
 
     def on_transcript(self, msg):
         text = msg.data.strip()

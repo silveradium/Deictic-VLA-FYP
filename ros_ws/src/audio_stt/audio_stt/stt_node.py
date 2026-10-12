@@ -4,9 +4,14 @@ Runs in the bringup container on the machine the DJI Mic Mini receiver is plugge
 (docs/network.md). Moonshine runs on the CPU; the first start downloads the model into the
 stt_models volume (docker/compose/ros.yml). Parameters: configs/robots/roxy.yaml, stt_node.
 
+While stt/mute is true (Roxy speaking, voice:=true), and for unmute_delay s after, the mic is
+ignored, so Roxy never transcribes its own voice.
+
 Mics the container can see:
   python3 -c "import sounddevice; print(sounddevice.query_devices())"
 """
+
+import time
 
 import rclpy
 from moonshine_voice import string_to_model_arch
@@ -14,7 +19,11 @@ from moonshine_voice.mic_transcriber import MicTranscriber
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import String
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import Bool, String
+
+LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                     durability=DurabilityPolicy.TRANSIENT_LOCAL)
 
 
 class SttNode(Node):
@@ -25,8 +34,13 @@ class SttNode(Node):
             "mic_device", "MINI", ParameterDescriptor(dynamic_typing=True)).value)
         arch = self.declare_parameter("model_arch", "medium-streaming").value
         keyterms = self.declare_parameter("keyterms", ["Roxy", "Hey Roxy"]).value
+        self.unmute_delay = self.declare_parameter("unmute_delay", 0.5).value
 
         self.pub = self.create_publisher(String, "stt/transcript", 10)
+        self.mute_requested = False
+        self.muted = False
+        self.last_mute_t = 0.0
+        self.create_subscription(Bool, "stt/mute", self.on_mute, LATCHED)
 
         if device in ("", "default"):
             device = None
@@ -47,12 +61,26 @@ class SttNode(Node):
             except Exception as e:  # only the streaming models take key terms
                 self.get_logger().warn(f"keyterms not applied: {e}")
         self.mic.start()
+        self.create_timer(0.1, self.update_mute)
         self.get_logger().info(f"listening on mic {'default' if device is None else device!r}")
+
+    def on_mute(self, msg):
+        self.mute_requested = msg.data
+
+    def update_mute(self):
+        now = time.monotonic()
+        if self.mute_requested:
+            self.last_mute_t = now
+        muted = now - self.last_mute_t < self.unmute_delay  # a tail for the speaker's echo
+        if muted != self.muted:
+            self.muted = muted
+            self.mic.mute(muted)
+            self.get_logger().info("mic muted" if muted else "mic live")
 
     def on_line(self, line):
         # Moonshine's worker thread, once per finished sentence
         text = line.text.strip()
-        if text:
+        if text and not self.muted:
             self.get_logger().info(f"heard: {text!r}")
             self.pub.publish(String(data=text))
 

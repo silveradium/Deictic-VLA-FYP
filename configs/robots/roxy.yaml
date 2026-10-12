@@ -27,6 +27,7 @@ stt_node:
     mic_device: MINI              # name substring of the DJI receiver, an index, "pulse" or "default"
     model_arch: medium-streaming  # Moonshine; small-streaming if the CPU can't keep up
     keyterms: [Roxy, Hey Roxy]    # biases recognition towards the robot's name
+    unmute_delay: 0.5             # s the mic stays muted after Roxy stops speaking (stt/mute)
 
 # "Hey Roxy" wake phrase -> navila/instruction (audio_stt)
 wake_router:
