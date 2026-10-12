@@ -20,3 +20,10 @@ navila_node:
     max_ang: 0.8            # rad/s
     # Go2 front camera is 16:9; NaVILA squares every frame (crop = center square, squash = full FOV)
     image_mode: crop
+
+# Mic speech-to-text (ros_ws/src/audio_stt), on the machine the DJI Mic Mini is plugged into
+stt_node:
+  ros__parameters:
+    mic_device: MINI              # name substring of the DJI receiver, an index, "pulse" or "default"
+    model_arch: medium-streaming  # Moonshine; small-streaming if the CPU can't keep up
+    keyterms: [Roxy, Hey Roxy]    # biases recognition towards the robot's name
