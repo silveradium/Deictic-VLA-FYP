@@ -42,13 +42,16 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 | `make say TEXT="..."` | Make Roxy speak through the Pi speaker (`VOICE=true`) |
 | `make voice-preset PRESET=robot` | Switch Roxy's voice (`scooby` / `robot`) while it runs |
 | `make navila-server` | NaVILA server alone (GPU machine) |
+| `make demo-gpu` | Live demo, workstation: NaVILA server for the venue laptop over Tailscale; prints the URL for the laptop |
+| `make demo-site` | Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA on the workstation. Dry run; `MOTION=1` to move |
+| `make navila-health` | Check the NaVILA server answers at `NAVILA_SERVER_URL` (from the laptop) |
 | `make ros-shell` | Shell in the ROS image on the host network, for `ros2 topic list` etc. |
 | `make down` | Stop every stack |
 | `make build-pi` | On the Pi: build the Pi image (arm64 Humble + Orbbec driver) |
 | `make pi-up` / `make pi-down` | On the Pi: start (in the background, survives reboots) / stop the Orbbec camera |
 | `make pi-logs` / `make pi-shell` | On the Pi: follow the camera's logs / open a shell in its container |
 
-Planned: `bag2ep` (5), `demo-site` / `demo-gpu` (7), `export` (8), `train-submit` (9).
+Planned: `bag2ep` (5), `export` (8), `train-submit` (9).
 
 ## Layout
 

@@ -9,11 +9,12 @@ COMPOSE := docker compose --project-directory . -f docker/compose
 STACK_COLLECT := $(COMPOSE)/ros.yml -f docker/compose/collect.yml
 STACK_INFER   := $(COMPOSE)/ros.yml -f docker/compose/navila.yml -f docker/compose/infer.yml
 STACK_NAVILA  := $(COMPOSE)/navila.yml
+STACK_SITE    := $(COMPOSE)/ros.yml -f docker/compose/infer.yml
 STACK_PI      := $(COMPOSE)/pi.yml
 
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
         instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
-        build-pi pi-up pi-down pi-logs pi-shell \
+        demo-gpu demo-site navila-health build-pi pi-up pi-down pi-logs pi-shell \
         demo-site demo-gpu bag2ep export train-submit
 
 help: ## List targets
@@ -81,6 +82,22 @@ voice-preset: ## Switch Roxy's voice while it runs (VOICE=true): PRESET=scooby|r
 	@test -n "$(PRESET)" || { echo 'usage: make voice-preset PRESET=robot'; exit 1; }
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 param set /tts_node voice_preset $(PRESET)
 
+# --- live demo: venue laptop + remote GPU (docs/runbooks/live-demo.md) -------
+demo-gpu: ## Live demo, workstation: NaVILA server for the venue laptop, over Tailscale
+	@ip=$$(tailscale ip -4 2>/dev/null | head -1); port=$$(grep -oP '^NAVILA_PORT=\K[0-9]+' .env 2>/dev/null || echo 8000); \
+	echo "On the laptop, in .env: NAVILA_SERVER_URL=http://$${ip:-<this machine's Tailscale IP>}:$$port"
+	$(STACK_NAVILA) up
+
+demo-site: ## Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA via the workstation (MOTION=1 to move)
+	@grep -qE '^NAVILA_SERVER_URL=http://(127\.0\.0\.1|localhost)' .env \
+		&& { echo "NAVILA_SERVER_URL in .env points at this machine: set it to the workstation (make demo-gpu prints it)"; exit 1; } || true
+	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_SITE) up
+
+navila-health: ## Check the NaVILA server answers at NAVILA_SERVER_URL (run on the laptop)
+	@url=$$(grep -oP '^NAVILA_SERVER_URL=\K\S+' .env); \
+	curl -fsS --max-time 5 "$$url/health" && echo "  <- NaVILA server OK at $$url" \
+		|| { echo "NaVILA server not reachable at $$url (make demo-gpu running? Tailscale up on both?)"; exit 1; }
+
 # --- Pi (run these on the Pi; robot/pi/README.md) ------------------------------
 build-pi: ## On the Pi: build the Pi image (arm64 Humble + Orbbec driver)
 	$(STACK_PI) build pi
@@ -99,12 +116,6 @@ pi-shell: ## On the Pi: shell in the running camera container (ros2 topic hz ...
 	$(STACK_PI) exec pi /entrypoint.sh bash
 
 # --- not implemented yet (build order in README) -----------------------------
-demo-site: ## [step 7] Remote demo, robot site half (laptop)
-	@echo "demo-site: not implemented yet (build step 7)"; exit 1
-
-demo-gpu: ## [step 7] Remote demo, GPU half (workstation)
-	@echo "demo-gpu: not implemented yet (build step 7)"; exit 1
-
 bag2ep: ## [step 5] Bag -> canonical episodes (BAG=...)
 	@echo "bag2ep: not implemented yet (build step 5)"; exit 1
 
