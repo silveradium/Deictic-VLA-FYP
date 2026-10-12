@@ -14,5 +14,6 @@ setup(
     zip_safe=True,
     entry_points={"console_scripts": [
         "stt_node = audio_stt.stt_node:main",
+        "wake_router = audio_stt.wake_router:main",
     ]},
 )

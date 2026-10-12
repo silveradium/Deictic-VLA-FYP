@@ -27,3 +27,13 @@ stt_node:
     mic_device: MINI              # name substring of the DJI receiver, an index, "pulse" or "default"
     model_arch: medium-streaming  # Moonshine; small-streaming if the CPU can't keep up
     keyterms: [Roxy, Hey Roxy]    # biases recognition towards the robot's name
+
+# "Hey Roxy" wake phrase -> navila/instruction (audio_stt)
+wake_router:
+  ros__parameters:
+    wake_prefixes: [hey, hi, hay, hello, ok, okay, oi]
+    wake_names: [roxy, roxie, roxi, rocksy, roxey]      # wake Roxy on their own
+    wake_names_loose: [rocky, foxy, proxy, rox, rocks]  # sound-alikes: only after "hey ..."
+    stop_words: [stop, halt, freeze]  # a sentence starting with one ends the episode at once, wake phrase or not
+    followup_window: 8.0              # s after a bare "Hey Roxy" in which the next sentence is the request
+    forward_to_navila: true           # false: only stt/request, another node decides what reaches NaVILA
