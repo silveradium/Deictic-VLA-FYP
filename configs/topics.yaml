@@ -3,6 +3,7 @@
 #
 #   qos: reliable     = QoSProfile(depth=10)
 #        best_effort  = BEST_EFFORT, KEEP_LAST (sensor data)
+#        latched      = RELIABLE, TRANSIENT_LOCAL, depth 1 (state: late joiners get the last value)
 #   from: machine / node that publishes it
 #
 # Names are the go2_ros2_sdk single-robot names (one ROBOT_IP). With several IPs the
@@ -38,5 +39,13 @@ camera:  # Orbbec Gemini 335 on the Pi (robot/pi/deictic_pi). Raw frames never l
 stt:  # mic speech-to-text on the bringup machine (audio_stt). Wake phrase: "Hey Roxy"
   stt/transcript: {type: std_msgs/msg/String, qos: reliable, from: stt_node, note: every finished sentence the mic hears}
   stt/request:    {type: std_msgs/msg/String, qos: reliable, from: wake_router, note: 'what was said after "Hey Roxy"; empty = the wake phrase alone'}
+  stt/mute:       {type: std_msgs/msg/Bool,   qos: latched,  from: dialog_node, note: 'true while Roxy speaks: the mic is ignored, so Roxy never hears itself'}
+
+voice:  # spoken replies (ros_ws/src/voice on the bringup machine, speaker on the Pi), with voice:=true
+  voice/say:      {type: std_msgs/msg/String,          qos: reliable, from: dialog_node / make say, note: text for Roxy to speak}
+  voice/qa:       {type: std_msgs/msg/String,          qos: reliable, from: dialog_node, note: 'JSON {heard, intent, question, reply} per request, for logs and the recorder'}
+  voice/audio:    {type: std_msgs/msg/UInt8MultiArray, qos: reliable, from: tts_node, note: 'one complete WAV file per line, ~50-250 KB'}
+  voice/speaking: {type: std_msgs/msg/Bool,            qos: latched,  from: Pi speaker_node, note: true while the Pi speaker plays}
+  voice/preset:   {type: std_msgs/msg/String,          qos: latched,  from: tts_node, note: 'scooby | robot; dialog_node talks in the matching style'}
 
 # episode: recorder start/stop markers. Added in build step 4 (deictic_interfaces).
