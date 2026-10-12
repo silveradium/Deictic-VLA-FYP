@@ -42,3 +42,10 @@ wake_router:
 speaker_node:
   ros__parameters:
     alsa_device: plughw:CARD=Device,DEV=0  # USB sound card + 3.5 mm speaker on Roxy's Pi (aplay -L)
+
+# Spoken replies (ros_ws/src/voice), on the bringup machine, with VOICE=true in .env
+tts_node:
+  ros__parameters:
+    voice_preset: scooby               # scooby | robot; `make voice-preset PRESET=robot` while running
+    piper_voice: en_US-ryan-medium     # downloaded into the ROS image (docker/ros/Dockerfile)
+    piper_voices_dir: /opt/piper-voices
