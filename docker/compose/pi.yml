@@ -21,6 +21,6 @@ services:
       DDS_IFACE: ${DDS_IFACE:-}  # wlan0 on Wi-Fi; required, checked by the entrypoint
       PI_IP: ${PI_IP:-}
       BRIDGE_IP: ${BRIDGE_IP:-}  # the machine running bringup: the Pi's DDS peer
-    command: ros2 launch deictic_pi pi.launch.py
+    command: ros2 launch deictic_pi pi.launch.py enable_depth:=${PI_DEPTH:-false}
     restart: unless-stopped     # the camera comes back by itself after a reboot
     stop_signal: SIGINT         # lets ros2 launch shut the driver down cleanly
