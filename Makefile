@@ -14,7 +14,7 @@ STACK_PI      := $(COMPOSE)/pi.yml
 
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
         instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
-        demo-gpu demo-site navila-health build-pi pi-up pi-down pi-logs pi-shell \
+        demo-gpu demo-site navila-health build-pi pi-volume pi-up pi-down pi-logs pi-shell \
         demo-site demo-gpu bag2ep export train-submit
 
 help: ## List targets
@@ -111,6 +111,11 @@ pi-down: ## On the Pi: stop the camera container
 
 pi-logs: ## On the Pi: follow the camera container's logs
 	$(STACK_PI) logs -f pi
+
+pi-volume: ## On the Pi: speaker boost in dB past the card's max, while it runs: GAIN=8 (lasting: roxy.yaml)
+	@test -n "$(GAIN)" || { echo 'usage: make pi-volume GAIN=8   (0 = no boost; ~12+ distorts)'; exit 1; }
+	amixer -q -c Device sset Speaker 100% unmute
+	$(STACK_PI) exec pi /entrypoint.sh ros2 param set /speaker_node gain_db $$(printf '%.1f' $(GAIN))
 
 pi-shell: ## On the Pi: shell in the running camera container (ros2 topic hz ...)
 	$(STACK_PI) exec pi /entrypoint.sh bash

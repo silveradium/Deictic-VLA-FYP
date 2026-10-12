@@ -35,8 +35,10 @@ joystick ─ joy ─► teleop_twist_joy ─ cmd_vel_joy (prio 10) ─┐
 navila_node ───────────────────────── cmd_vel (prio 5) ─────┘
 ```
 
-The joystick always wins. twist_mux drops an input after 0.5 s of silence, so navila_node publishes
-every tick, zeros included.
+The joystick wins while its enable button (RB, button 5) is held, and only then publishes: an idle
+joystick would otherwise send zeros at 20 Hz and block navila_node for good (`configs/robots/roxy.yaml`,
+go2_teleop_node). twist_mux drops an input after 0.5 s of silence, so navila_node publishes every tick,
+zeros included.
 
 ## Ports
 

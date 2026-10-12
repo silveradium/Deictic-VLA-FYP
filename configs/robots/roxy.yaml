@@ -21,6 +21,15 @@ navila_node:
     # Go2 front camera is 16:9; NaVILA squares every frame (crop = center square, squash = full FOV)
     image_mode: crop
 
+# Joystick (teleop_twist_joy, started by deictic_bringup), on top of go2's twist_mux.yaml. It drives
+# only while the enable button is held. Without that, an idle joystick sends zeros on cmd_vel_joy at
+# 20 Hz (joy autorepeat) and twist_mux, priority 10, never lets navila_node's or `make calibrate`'s
+# cmd_vel (priority 5) through: the robot never moves while a joystick is plugged in.
+go2_teleop_node:
+  ros__parameters:
+    require_enable_button: true
+    enable_button: 5  # RB on an Xbox pad, R1 on a PlayStation one; check with `ros2 topic echo /joy`
+
 # Mic speech-to-text (ros_ws/src/audio_stt), on the machine the DJI Mic Mini is plugged into
 stt_node:
   ros__parameters:
@@ -43,6 +52,7 @@ wake_router:
 speaker_node:
   ros__parameters:
     alsa_device: plughw:CARD=Device,DEV=0  # USB sound card + 3.5 mm speaker on Roxy's Pi (aplay -L)
+    gain_db: 8.0   # boost past the card's max (keep its mixer at 100%), soft-limited; `make pi-volume GAIN=...`
 
 # Spoken replies (ros_ws/src/voice), on the bringup machine, with VOICE=true in .env
 dialog_node:

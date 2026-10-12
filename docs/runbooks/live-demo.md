@@ -68,8 +68,9 @@ A `ROS_DOMAIN_ID` exported in a shell (`echo $ROS_DOMAIN_ID`) overrides `.env`: 
 
 ## Every demo
 
-1. **Workstation:** `make demo-gpu` and leave it running. Loading the model takes a few minutes. It
-   prints the `NAVILA_SERVER_URL` for the laptop.
+1. **Workstation:** `make down` (a bringup left running here holds the Go2's only WebRTC connection
+   and locks the laptop out), then `make demo-gpu` and leave it running. Loading the model takes a
+   few minutes. It prints the `NAVILA_SERVER_URL` for the laptop.
 2. **At the venue:** put the Go2, the Pi and the laptop on one Wi-Fi network (the venue's, or a travel
    router). IPs change per network: run `hostname -I` on the Pi and the laptop, update `PI_IP` and
    `BRIDGE_IP` in both `.env` files, then `make pi-up` on the Pi.
@@ -92,8 +93,9 @@ A `ROS_DOMAIN_ID` exported in a shell (`echo $ROS_DOMAIN_ID`) overrides `.env`: 
    | "Hey Roxy, what's your name?" | Gemini: a question. Roxy answers; the robot does nothing |
    | "stop" | ends the NaVILA episode at once, wake phrase or not |
 
-7. **Moving for real:** `make down`, then `make demo-site MOTION=1`, joystick in hand: it always
-   overrides NaVILA.
+7. **Moving for real:** `make down`, then `make demo-site MOTION=1`, joystick in hand. Hold RB
+   (button 5, `configs/robots/roxy.yaml`) to take over: the sticks drive and NaVILA is ignored. Let go
+   and NaVILA carries on after 0.5 s.
 
 Stop: `make navila-stop` (end the episode), `make robot-stop` (StopMove now), `make down` (everything).
 
@@ -102,6 +104,9 @@ Stop: `make navila-stop` (end the episode), `make robot-stop` (StopMove now), `m
 | Symptom | Check |
 |---|---|
 | `make navila-health` fails | `make demo-gpu` running on the workstation; `tailscale status` on both machines; the ufw rule above; the IP and port in `NAVILA_SERVER_URL` |
+| The Go2 never connects: no `/go2_driver_node` in `ros2 node list`, no `/odom` | The Go2 takes one WebRTC client at a time: close the Unitree app on every phone, `make down` on every other machine, and wait ~30 s after a `make down` before starting again. Then `GO2_IP` is what the app shows today (DHCP can change it), `ping` reaches it, and `GO2_AES_KEY` is set. `make demo-site` prints the driver's reason |
+| NaVILA decides but the robot doesn't move | `MOTION=1`; `/odom` arriving (the Go2 connected); RB not held; `ros2 topic info -v /cmd_vel_out` lists `go2_driver_node` as a subscriber |
+| Pi camera drops off USB, speaker "No such device" | Under-voltage: `vcgencmd get_throttled` on the Pi is not `0x0`. Use a 5 V / 5 A supply ([robot/pi/README.md](../../robot/pi/README.md)) |
 | NaVILA replies slowly | `tailscale ping <workstation>`: "via DERP" means relayed, "direct" is fastest. The venue's upload speed matters: each decision sends a few JPEG frames |
 | Pi topics missing on the laptop | the same `ROS_DOMAIN_ID` on both (and none exported in the shell); `PI_IP` / `BRIDGE_IP`; the laptop's firewall (`sudo ufw status`: if active, allow UDP from the venue subnet on ports 7400 + 250 × domain onwards, e.g. 14900:15150 for domain 30) |
 | `stt_node` can't open the mic | the receiver was plugged in after starting; or another program holds it (an old container, PipeWire) |
