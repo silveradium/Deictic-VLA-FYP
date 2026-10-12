@@ -53,7 +53,8 @@ robot/            Pi and Jetson setup
 data/             gitignored except README.md and schema/
 data_pipeline/    real/ (bag -> episodes), deepoint/, export/, validate/
 training/         LoRA configs, job scripts, envs for aberdeen / the Singapore cluster
-eval/  scripts/  docs/
+eval/  scripts/
+docs/             network.md, runbooks/, portfolio/ (project site + poster)
 ```
 
 ### Forks (temporary locations)
