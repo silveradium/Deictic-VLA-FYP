@@ -19,6 +19,10 @@ make help         # all targets
 
 On the Pi: `make .env`, set `DDS_IFACE`, `PI_IP` and `BRIDGE_IP`, then `make pi-up` ([robot/pi](robot/pi/README.md)).
 
+Voice: say "Hey Roxy, walk to that chair" into the mic on the bringup machine; it reaches NaVILA word for word,
+and "stop" ends the episode at once. With `VOICE=true` and `GEMINI_API_KEY` in `.env`, Roxy also tells
+commands from questions and answers aloud through the Pi speaker.
+
 Requires Docker with Compose v2. GPU machines also need `nvidia-container-toolkit`. DDS setup and the
 firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 
@@ -55,7 +59,7 @@ docker/
   navila/         CUDA + NaVILA server deps; code and weights are mounted
   pi/             arm64 Humble + Orbbec driver (step 2)
   compose/        building blocks (ros.yml, navila.yml) + mode overlays (collect.yml, infer.yml)
-ros_ws/src/       deictic_bringup, deictic_interfaces, audio_stt, recorder, teleop, navila_node
+ros_ws/src/       deictic_bringup, deictic_interfaces, audio_stt, voice, recorder, teleop, navila_node
 third_party/      NaVILA fork (submodule, pending)
 robot/            pi/ (deictic_pi package + setup guide), jetson/
 data/             gitignored except README.md and schema/

@@ -47,8 +47,8 @@ changes come in through pull requests.
 | `chore` | Housekeeping |
 | `exp` | Experiments |
 
-Scopes: `docker`, `config`, `bringup`, `navila`, `pi`, `recorder`, `stt`, `data`, `training`,
-`eval`, `docs`. Leave the scope out if a change spans several.
+Scopes: `docker`, `config`, `bringup`, `navila`, `pi`, `recorder`, `stt`, `voice`, `data`,
+`training`, `eval`, `docs`. Leave the scope out if a change spans several.
 
 Examples:
 

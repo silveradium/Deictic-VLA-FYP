@@ -1,8 +1,11 @@
 # Raspberry Pi 5
 
-The Pi on Roxy runs one container: the Orbbec Gemini 335 driver, publishing under `orbbec/`
-(`configs/topics.yaml`, camera section). Raw frames stay on the Pi. Other machines use the JPEG
-stream, and bringup decodes it back to raw for NaVILA (`orbbec/color/image_decoded`).
+The Pi on Roxy runs one container:
+- the Orbbec Gemini 335 driver, publishing under `orbbec/` (`configs/topics.yaml`, camera
+  section). Raw frames stay on the Pi. Other machines use the JPEG stream, and bringup decodes it
+  back to raw for NaVILA (`orbbec/color/image_decoded`).
+- `speaker_node`, which plays Roxy's spoken replies (`voice/audio`, from bringup with `VOICE=true`)
+  on the USB sound card.
 
 | | |
 |---|---|
@@ -10,6 +13,7 @@ stream, and bringup decodes it back to raw for NaVILA (`orbbec/color/image_decod
 | Image | `deictic/pi:humble` from `docker/pi/Dockerfile`, built on the Pi |
 | Package | `robot/pi/deictic_pi`: `launch/pi.launch.py` |
 | Colour | 640x480 at 15 Hz, JPEG ~45 KB a frame (~6 Mbit/s over Wi-Fi) |
+| Speaker | USB sound card + 3.5 mm speaker, `alsa_device` in `configs/robots/roxy.yaml` (`aplay -L`) |
 
 ## Hardware
 
@@ -57,6 +61,9 @@ On the bringup machine:
 
 If the topics don't show up there, see [docs/runbooks/dds.md](../../docs/runbooks/dds.md).
 The usual causes are `BRIDGE_IP`/`PI_IP`, `ROS_DOMAIN_ID`, or the firewall rule.
+
+Camera without the speaker: `speaker:=false` (`robot/pi/deictic_pi/launch/pi.launch.py`).
+Test the speaker from the bringup machine with `make say TEXT="hello"` (`VOICE=true`).
 
 ## Notes
 
