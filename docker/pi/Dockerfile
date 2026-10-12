@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Pi 5 image (arm64): ROS 2 Humble + Orbbec Gemini 335 driver, publishing orbbec/ topics.
+# Pi 5 image (arm64): ROS 2 Humble + Orbbec Gemini 335 driver (orbbec/ topics) + speaker playback.
 # Built and run on the Pi (`make pi-up`, robot/pi/README.md). Raw frames stay on the Pi; other
 # machines use the JPEG stream (configs/topics.yaml, camera section).
 #
@@ -12,10 +12,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Orbbec driver v2 (Gemini 330 series) from the ROS apt repo: an arm64 binary, nothing to compile.
 # image-transport-plugins: the driver also publishes .../compressed, which other machines use.
+# alsa-utils: aplay, for speaker_node.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-${ROS_DISTRO}-orbbec-camera \
         ros-${ROS_DISTRO}-image-transport-plugins \
         ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+        alsa-utils \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /pi_ws

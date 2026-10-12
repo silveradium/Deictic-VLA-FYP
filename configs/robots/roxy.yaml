@@ -37,3 +37,8 @@ wake_router:
     stop_words: [stop, halt, freeze]  # a sentence starting with one ends the episode at once, wake phrase or not
     followup_window: 8.0              # s after a bare "Hey Roxy" in which the next sentence is the request
     forward_to_navila: true           # false: only stt/request, another node decides what reaches NaVILA
+
+# Pi speaker (robot/pi/deictic_pi): plays voice/audio
+speaker_node:
+  ros__parameters:
+    alsa_device: plughw:CARD=Device,DEV=0  # USB sound card + 3.5 mm speaker on Roxy's Pi (aplay -L)

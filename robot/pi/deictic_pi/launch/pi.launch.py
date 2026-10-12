@@ -1,7 +1,9 @@
-"""Pi side of Roxy: the Orbbec Gemini 335 under orbbec/ (configs/topics.yaml, camera section).
+"""Pi side of Roxy: the Orbbec Gemini 335 under orbbec/ (configs/topics.yaml, camera section)
+and the speaker for spoken replies (voice/audio -> speaker_node).
 
   ros2 launch deictic_pi pi.launch.py                      what `make pi-up` runs
   ros2 launch deictic_pi pi.launch.py enable_depth:=true   needs a 5 A supply (robot/pi/README.md)
+  ros2 launch deictic_pi pi.launch.py speaker:=false       camera only
 
 Colour at 640x480, 15 Hz. navila_node holds still on frames older than 0.5 s and adds a history
 frame every 25 cm / 15 deg, so it needs the full rate, not a preview. Raw frames stay on the Pi:
@@ -18,8 +20,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
@@ -44,6 +48,14 @@ def generate_launch_description():
         }.items(),
     )
 
+    speaker = Node(
+        package="deictic_pi",
+        executable="speaker_node",
+        output="screen",
+        condition=IfCondition(arg("speaker")),
+        parameters=[arg("robot_config")],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("color_width", default_value="640"),
         DeclareLaunchArgument("color_height", default_value="480"),
@@ -52,5 +64,9 @@ def generate_launch_description():
                               description="Depth stream; needs a 5 A supply (robot/pi/README.md)"),
         DeclareLaunchArgument("depth_width", default_value="640"),
         DeclareLaunchArgument("depth_height", default_value="480"),
+        DeclareLaunchArgument("speaker", default_value="true", description="Play voice/audio on the Pi speaker"),
+        DeclareLaunchArgument("robot_config", default_value="/deictic/configs/robots/roxy.yaml",
+                              description="Robot parameters (configs/robots/, mounted in the container)"),
         orbbec,
+        speaker,
     ])

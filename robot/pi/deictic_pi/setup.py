@@ -15,4 +15,7 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
+    entry_points={"console_scripts": [
+        "speaker_node = deictic_pi.speaker_node:main",
+    ]},
 )
