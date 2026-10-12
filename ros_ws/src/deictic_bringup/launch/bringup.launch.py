@@ -14,6 +14,10 @@ difference between modes is who else runs:
 
 Robot IP and AES key come from the environment (GO2_IP / GO2_AES_KEY in .env, passed
 in as ROBOT_IP / ROBOT_AES_KEY by docker/compose/ros.yml).
+
+The Orbbec on the Pi (`make pi-up`) sends only its JPEG stream over Wi-Fi; orbbec_decode turns
+it back into a raw image here, orbbec/color/image_decoded, which navila_node reads when
+NAVILA_CAMERA_TOPIC points at it. Without the Pi it just waits.
 """
 
 from launch import LaunchDescription
@@ -57,6 +61,18 @@ def generate_launch_description():
         remappings=[("cmd_vel", "cmd_vel_joy")],  # twist_mux priority 10, above NaVILA
     )
 
+    orbbec_decode = Node(
+        package="image_transport",
+        executable="republish",
+        name="orbbec_decode",
+        arguments=["compressed", "raw"],
+        remappings=[
+            ("in/compressed", "orbbec/color/image_raw/compressed"),
+            ("out", "orbbec/color/image_decoded"),
+        ],
+        condition=IfCondition(LaunchConfiguration("orbbec")),
+    )
+
     navila = Node(
         package="navila_node",
         executable="navila_node",
@@ -76,12 +92,16 @@ def generate_launch_description():
         DeclareLaunchArgument("joystick", default_value="true", description="joy_node + teleop_twist_joy"),
         DeclareLaunchArgument("robot_config", default_value="/deictic/configs/robots/roxy.yaml",
                               description="Robot parameters (configs/robots/, mounted in the container)"),
+        DeclareLaunchArgument("orbbec", default_value="true",
+                              description="Decode the Pi's Orbbec JPEG stream to orbbec/color/image_decoded"),
         DeclareLaunchArgument("camera_topic", default_value="camera/image_raw",
-                              description="infer: RGB topic NaVILA sees (Go2 front camera by default)"),
+                              description="infer: RGB topic NaVILA sees (Go2 front camera by default, "
+                                          "orbbec/color/image_decoded for the Orbbec)"),
         DeclareLaunchArgument("enable_motion", default_value="false",
                               description="infer: actually publish cmd_vel (false = dry run, log only)"),
         GroupAction([go2_bridge]),  # scoped: the include's arguments (joystick:=false) stay inside
         joy,
         teleop,
+        orbbec_decode,
         navila,
     ])
