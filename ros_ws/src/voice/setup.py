@@ -13,6 +13,7 @@ setup(
     install_requires=["setuptools"],
     zip_safe=True,
     entry_points={"console_scripts": [
+        "dialog_node = voice.dialog_node:main",
         "tts_node = voice.tts_node:main",
     ]},
 )

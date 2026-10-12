@@ -44,6 +44,14 @@ speaker_node:
     alsa_device: plughw:CARD=Device,DEV=0  # USB sound card + 3.5 mm speaker on Roxy's Pi (aplay -L)
 
 # Spoken replies (ros_ws/src/voice), on the bringup machine, with VOICE=true in .env
+dialog_node:
+  ros__parameters:
+    gemini_model: gemini-3.5-flash-lite  # fast; gemini-3.8-flash for smarter answers
+    thinking_level: minimal              # "" for the model's default
+    gemini_timeout: 15.0                 # s
+    max_words: 35                        # length of spoken answers
+    history_turns: 4                     # earlier exchanges Gemini sees
+
 tts_node:
   ros__parameters:
     voice_preset: scooby               # scooby | robot; `make voice-preset PRESET=robot` while running
