@@ -2,4 +2,4 @@
 # Recorder joins in build step 4. Mic STT runs unless STT=false. Camera topics come from the Pi.
 services:
   bringup:
-    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true}
+    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} voice:=${VOICE:-false}

@@ -7,4 +7,5 @@ services:
       ros2 launch deictic_bringup bringup.launch.py mode:=infer
       enable_motion:=${NAVILA_MOTION:-false}
       stt:=${STT:-true}
+      voice:=${VOICE:-false}
       camera_topic:=${NAVILA_CAMERA_TOPIC:-camera/image_raw}

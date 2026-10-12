@@ -22,13 +22,23 @@ NAVILA_CAMERA_TOPIC points at it. Without the Pi it just waits.
 stt:=true (both modes) listens to the mic on this machine: stt_node transcribes, and wake_router
 sends "Hey Roxy, <instruction>" to navila/instruction and any sentence starting with "stop" at
 once (audio_stt). Set STT=false in .env on a machine without the mic.
+
+voice:=true (VOICE=true + GEMINI_API_KEY in .env) adds spoken replies (voice): dialog_node asks
+Gemini whether a request is a command (sent to navila/instruction word for word) or a question
+(answered aloud), tts_node speaks through the Pi's speaker (`make pi-up`). wake_router then stops
+forwarding requests itself.
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
 from launch.conditions import IfCondition, LaunchConfigurationEquals
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (
+    EnvironmentVariable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -85,11 +95,31 @@ def generate_launch_description():
         condition=stt,
         parameters=[LaunchConfiguration("robot_config")],
     )
+    voice_on = PythonExpression(["'", LaunchConfiguration("voice"), "' == 'true'"])
     wake_router = Node(
         package="audio_stt",
         executable="wake_router",
         output="screen",
         condition=stt,
+        parameters=[LaunchConfiguration("robot_config"), {
+            # with voice, dialog_node decides what reaches NaVILA
+            "forward_to_navila": PythonExpression(["not ", voice_on]),
+        }],
+    )
+
+    voice = IfCondition(LaunchConfiguration("voice"))
+    dialog_node = Node(
+        package="voice",
+        executable="dialog_node",
+        output="screen",
+        condition=voice,
+        parameters=[LaunchConfiguration("robot_config")],
+    )
+    tts_node = Node(
+        package="voice",
+        executable="tts_node",
+        output="screen",
+        condition=voice,
         parameters=[LaunchConfiguration("robot_config")],
     )
 
@@ -114,6 +144,8 @@ def generate_launch_description():
                               description="Robot parameters (configs/robots/, mounted in the container)"),
         DeclareLaunchArgument("stt", default_value="true",
                               description="Mic speech-to-text + 'Hey Roxy' -> navila/instruction"),
+        DeclareLaunchArgument("voice", default_value="false",
+                              description="Spoken replies: Gemini dialog + TTS on the Pi speaker (GEMINI_API_KEY)"),
         DeclareLaunchArgument("orbbec", default_value="true",
                               description="Decode the Pi's Orbbec JPEG stream to orbbec/color/image_decoded"),
         DeclareLaunchArgument("camera_topic", default_value="camera/image_raw",
@@ -127,5 +159,7 @@ def generate_launch_description():
         orbbec_decode,
         stt_node,
         wake_router,
+        dialog_node,
+        tts_node,
         navila,
     ])
