@@ -91,7 +91,8 @@ The modified forks currently sit untracked in the repo root, and the images read
 - [ ] 4. `recorder` with episode markers, `make collect` end to end, same image on the 24.04 laptop
 - [ ] 5. `data_pipeline/real`: bag -> canonical episodes (define `data/schema` first)
 - [ ] 6. `docker/navila` + `navila_node` + `mode:=infer` (pretrained). Server image done and tested
-- [ ] 7. Remote demo: zenoh configs, two compose files, latency test
+- [ ] 7. Remote demo: `make demo-gpu` (workstation) + `make demo-site` (venue laptop), NaVILA over HTTP on
+  Tailscale ([docs/runbooks/live-demo.md](docs/runbooks/live-demo.md)). Still open: zenoh for live topics, latency test
 - [ ] 8. `data_pipeline/deepoint` augmentation + `export` to NaVILA format
 - [ ] 9. `training/`: env, LoRA config, aberdeen job scripts
 

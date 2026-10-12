@@ -23,7 +23,8 @@ publishes what over which link.
 | bringup → Pi speaker | DDS | `voice/audio`: one WAV per spoken line (~50-250 KB), `voice/speaking` back | `VOICE=true`. dialog_node mutes the mic (`stt/mute`) while the Pi plays |
 | dialog_node → Gemini API | HTTPS | the request text, `{intent, question, reply}` back | `VOICE=true`, needs internet. Without it Roxy says so and nothing reaches NaVILA |
 | navila_node → NaVILA server | HTTP (JSON + JPEG frames) | `/act`, `/health` | Works over Tailscale as is: no DDS needed on this link |
-| Remote demo, ROS topics | zenoh-bridge-ros2dds | selected topics, compressed images | Step 7. DDS can't cross Tailscale (no multicast) |
+| Live demo: laptop → workstation | HTTP over Tailscale | NaVILA requests only | `make demo-site` / `make demo-gpu`: the laptop runs bringup, the workstation only the server ([runbooks/live-demo.md](runbooks/live-demo.md)) |
+| Remote demo, ROS topics | zenoh-bridge-ros2dds | selected topics, compressed images | Step 7, not built yet. DDS can't cross Tailscale (no multicast) |
 | Any machine | Foxglove WebSocket :8765 | live topics | From the bringup container |
 
 ## Velocity chain
