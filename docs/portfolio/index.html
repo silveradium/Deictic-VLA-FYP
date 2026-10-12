@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Closing the Deictic Loop | Gesture-conditioned VLA navigation on a quadruped</title>
+<meta name="description" content="A University of Moratuwa final-year project: a Unitree Go2 that follows pointing gestures through a vision-language-action model, anchors the pointing ray in the world frame, and checks its interpretation with the user before it moves.">
+<meta property="og:title" content="Closing the Deictic Loop">
+<meta property="og:description" content="Gesture-conditioned VLA navigation on a quadruped, with a robot-to-human grounding loop.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#2E5E70">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232E5E70'/%3E%3Cpath d='M14 40 L40 22' stroke='%23fff' stroke-width='6' stroke-linecap='round' stroke-dasharray='8 7'/%3E%3Crect x='40' y='14' width='14' height='14' rx='2' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&amp;family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&amp;display=swap">
+<style>
+:root{--ink:#16202A;--muted:#4A5866;--teal:#2E5E70;--teal-d:#1F4554;--wash:#EAF2F5;--rule:#C9D3DB;--well:#F3F6F8;
+--blue:#1F6FB8;--orange:#E07B2E;--orange-t:#A84F0C;--green:#2E7D32;--red:#C62828;
+--sans:'Archivo','Helvetica Neue',Helvetica,sans-serif;--serif:'STIX Two Text','Times New Roman',serif;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--max:1200px}
+*{box-sizing:border-box}
+html{scroll-padding-top:76px;color-scheme:light;-webkit-text-size-adjust:100%}
+body{margin:0;background:#fff;color:var(--ink);font-family:var(--sans);font-size:18px;line-height:1.6;-webkit-font-smoothing:antialiased}
+svg{max-width:100%}
+.ill{display:block;width:100%;height:auto}
+a{color:var(--teal);text-underline-offset:3px;text-decoration-thickness:1.5px}
+a:hover{color:var(--teal-d)}
+:focus-visible{outline:3px solid var(--teal);outline-offset:3px;border-radius:4px}
+.skip{position:absolute;left:-9999px;top:10px;background:var(--ink);color:#fff;padding:10px 14px;border-radius:8px;z-index:50}
+.skip:focus{left:10px}
+i.m,.m{font-family:var(--serif);font-style:italic}
+sub{font-size:.7em}
+
+.topbar{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.95);backdrop-filter:saturate(1.2) blur(8px);border-bottom:1px solid var(--rule)}
+.topbar-in{max-width:var(--max);margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:20px}
+.brand{font-weight:800;font-stretch:115%;font-size:18px;color:var(--teal);text-decoration:none;white-space:nowrap}
+.nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin-left:auto}
+.nav::-webkit-scrollbar{display:none}
+.nav a{display:block;padding:8px 10px;font-size:15px;color:var(--muted);text-decoration:none;white-space:nowrap;border-radius:6px}
+.nav a:hover{color:var(--ink);background:var(--well)}
+@media (max-width:1100px){.nav{mask-image:linear-gradient(90deg,#000 90%,transparent)}}
+@media (max-width:640px){.topbar-in{padding:0 14px;gap:12px}.brand{font-size:16px}}
+
+.hero{max-width:var(--max);margin:0 auto;padding:56px 24px 72px;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:52px;align-items:start}
+.hero h1{font-size:clamp(44px,5.4vw,76px);line-height:.95;font-weight:800;font-stretch:120%;letter-spacing:-.025em;color:var(--teal);margin:0 0 20px;text-wrap:balance}
+.hero .sub{font-size:21px;line-height:1.38;font-weight:500;margin:0 0 24px;text-wrap:balance}
+.authors{margin:0;font-weight:700;font-size:18px;line-height:1.45}
+.affil{margin:6px 0 24px;color:var(--muted);font-size:16px;line-height:1.5}
+.links{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 30px;padding:0;list-style:none}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 18px;border:1.5px solid var(--ink);border-radius:999px;color:var(--ink);text-decoration:none;font-weight:600;font-size:16px;background:#fff}
+.btn svg{width:18px;height:18px;flex:none}
+.btn:hover{background:var(--ink);color:#fff}
+.btn[aria-disabled="true"]{border-color:var(--rule);color:var(--muted);background:var(--well);cursor:default}
+.btn[aria-disabled="true"]:hover{background:var(--well);color:var(--muted)}
+.lead{font-family:var(--serif);font-size:21px;line-height:1.58;margin:0;max-width:34em}
+@media (max-width:980px){.hero{grid-template-columns:1fr;gap:36px;padding-top:36px}}
+
+.demo{border:1.5px solid var(--rule);border-radius:14px;background:var(--well);padding:16px}
+.demo-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px 16px;flex-wrap:wrap;margin:0 4px 12px}
+.demo-head h2{font-size:19px;line-height:1.3;margin:0;font-weight:700}
+.demo-head p{margin:0;font-size:14px;color:var(--muted)}
+.scene{display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:10px;background:#fff;touch-action:manipulation}
+.tbox{cursor:pointer}
+.tbox .face{fill:#D9B07A;stroke:#8C6A3C;stroke-width:2.5;transition:stroke-width .15s}
+.tbox:hover .face{stroke-width:4}
+.tbox:focus{outline:none}
+.tbox:focus-visible .face{stroke:var(--teal);stroke-width:5}
+.tbox.pick .face{stroke:var(--orange);stroke-width:4}
+.tbox.reached .face{fill:#DDEFD3;stroke:var(--green);stroke-width:4}
+#robot.think{animation:think 1s ease-in-out infinite}
+@keyframes think{50%{opacity:.55}}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 10px;padding:0;list-style:none}
+.chip{font-size:14px;line-height:1;padding:7px 11px;border-radius:999px;border:1.5px solid var(--rule);color:var(--muted);background:#fff}
+.chip.done{border-color:var(--teal);color:var(--teal)}
+.chip.on{background:var(--teal);border-color:var(--teal);color:#fff}
+.log{min-height:118px;margin:0;padding:10px 14px;list-style:none;background:#fff;border:1px solid var(--rule);border-radius:10px;font-size:15.5px;line-height:1.45}
+.log li{margin:0 0 4px}
+.log .you b{color:var(--blue)}
+.log .bot b{color:var(--orange-t)}
+.log .sys{color:var(--muted);font-style:italic}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;min-height:44px}
+.controls p{margin:0;font-size:15.5px;color:var(--muted)}
+.reply{min-height:44px;padding:0 15px;border-radius:10px;border:1.5px solid var(--ink);background:#fff;color:var(--ink);font:inherit;font-size:15.5px;font-weight:600;cursor:pointer}
+.reply.yes{border-color:var(--green);color:var(--green)}
+.reply.no{border-color:var(--red);color:var(--red)}
+.reply:hover{background:var(--ink);border-color:var(--ink);color:#fff}
+.demo-foot{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px 16px;margin-top:12px;font-size:14.5px;color:var(--muted)}
+.demo-foot label{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:44px}
+.demo-foot input{width:18px;height:18px;accent-color:var(--teal)}
+.linkbtn{background:none;border:0;padding:0;min-height:44px;font:inherit;color:var(--teal);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+
+.sec{max-width:var(--max);margin:0 auto;padding:76px 24px;border-top:1px solid var(--rule);display:grid;grid-template-columns:230px minmax(0,1fr);column-gap:52px}
+.sec>h2{grid-column:1;margin:0;font-size:29px;line-height:1.15;font-weight:700;font-stretch:112%;letter-spacing:-.01em;color:var(--teal);text-wrap:balance}
+.sec>.body{grid-column:2;min-width:0}
+.sec>.wide{grid-column:1/-1;min-width:0;margin-top:36px}
+.body>p{max-width:66ch;margin:0 0 16px}
+.body h3{font-size:19px;line-height:1.3;margin:0 0 6px;font-weight:700}
+@media (max-width:900px){.sec{grid-template-columns:1fr;padding:56px 20px}.sec>h2{margin-bottom:20px}.sec>.body{grid-column:1}}
+
+figure{margin:28px 0 0}
+figcaption{font-family:var(--serif);font-size:17px;line-height:1.5;color:var(--muted);margin-top:10px;max-width:72ch}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--rule);border-radius:12px;background:#fff;padding:12px}
+.scroll>svg{display:block;width:100%;height:auto;min-width:940px}
+.scroll.narrow>svg{min-width:720px}
+.hint{display:none;font-size:14px;color:var(--muted);margin:8px 0 0}
+@media (max-width:900px){.hint{display:block}}
+
+.gap{border:1.5px solid var(--teal);background:var(--wash);border-radius:10px;padding:14px 18px;max-width:66ch;margin:8px 0 0}
+.gap p{margin:0}
+.geo{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:28px;align-items:center;margin-top:30px}
+.geo-controls{display:flex;flex-direction:column;gap:18px}
+.geo-controls label{display:flex;justify-content:space-between;gap:12px;font-size:16px;font-weight:600}
+.geo-controls output{font-family:var(--serif);font-weight:400;font-size:18px}
+.geo-controls input[type=range]{width:100%;accent-color:var(--teal);height:28px;margin:4px 0 0}
+.readout{margin:0;font-size:17px;line-height:1.5;border-top:1px solid var(--rule);padding-top:14px}
+.readout b{font-family:var(--serif);font-size:20px}
+.readout .bad{color:var(--red)}
+.readout .ok{color:var(--blue)}
+.ghost{align-self:flex-start;min-height:44px;padding:0 16px;border-radius:10px;border:1.5px solid var(--teal);background:#fff;color:var(--teal);font:inherit;font-size:15.5px;font-weight:600;cursor:pointer}
+.ghost:hover{background:var(--teal);color:#fff}
+@media (max-width:760px){.geo{grid-template-columns:1fr}}
+
+.contrib{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:30px 40px;margin:0;padding:0;list-style:none}
+.contrib li{border-top:3px solid var(--teal);padding-top:14px}
+.contrib p{margin:0;font-size:17px;line-height:1.55}
+@media (max-width:640px){.contrib{grid-template-columns:1fr}}
+
+.stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px 32px;margin:34px 0 0;padding:0}
+.stages div{border-top:1px solid var(--rule);padding-top:12px}
+.stages dt{font-weight:700;font-size:17px;margin:0 0 4px}
+.stages dd{margin:0;font-size:16.5px;line-height:1.55;color:var(--ink)}
+@media (max-width:900px){.stages{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.stages{grid-template-columns:1fr}}
+
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px 26px;margin:0;padding:0;list-style:none}
+.steps li{min-width:0}
+.steps .ill{border-radius:8px}
+.step-t{display:flex;align-items:center;gap:10px;margin:12px 0 4px}
+.num{width:30px;height:30px;flex:none;border-radius:50%;background:var(--teal);color:#fff;font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center}
+.step-t h3{margin:0;font-size:18px}
+.steps p{margin:0;font-size:16.5px;line-height:1.5}
+@media (max-width:900px){.steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.steps{grid-template-columns:1fr}}
+
+.replies{width:100%;border-collapse:collapse;margin-top:28px;font-size:17px;line-height:1.5}
+.replies th{text-align:left;font-size:15px;color:var(--muted);font-weight:600;padding:0 16px 8px 0;border-bottom:2px solid var(--ink)}
+.replies td{vertical-align:top;padding:12px 16px 12px 0;border-bottom:1px solid var(--rule)}
+.replies td:first-child{width:38%;font-weight:600}
+
+.data{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:30px;margin-top:28px}
+.data figure{margin:0}
+.data .ill{border-radius:10px}
+.lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 32px;margin-top:28px}
+.lists ul{margin:0;padding-left:20px;font-size:16.5px;line-height:1.6}
+@media (max-width:760px){.data,.lists{grid-template-columns:1fr}}
+
+.metrics{margin:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 36px}
+.metrics div{border-top:1px solid var(--rule);padding-top:12px}
+.metrics dt{font-weight:700;font-size:17px}
+.metrics dd{margin:2px 0 0;font-size:16.5px;line-height:1.5}
+.pending{margin-top:28px;border:1.5px dashed var(--rule);border-radius:12px;padding:18px 20px;color:var(--muted);font-size:16.5px}
+@media (max-width:640px){.metrics{grid-template-columns:1fr}}
+
+.status{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px 32px;margin-top:6px}
+.status h3{display:flex;align-items:center;gap:8px}
+.dot{width:12px;height:12px;border-radius:50%;flex:none}
+.status ul{margin:0;padding-left:20px;font-size:16.5px;line-height:1.55}
+.timeline{list-style:none;margin:34px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.timeline li{border-top:4px solid var(--rule);padding:12px 18px 0 0;position:relative}
+.timeline li.now{border-top-color:var(--teal)}
+.timeline time{display:block;font-weight:700;font-size:16px}
+.timeline p{margin:2px 0 0;font-size:16px;line-height:1.5;color:var(--ink)}
+@media (max-width:760px){.status,.timeline{grid-template-columns:1fr}.timeline li{padding-bottom:16px}}
+
+.team{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:0;padding:0;list-style:none}
+.person{display:flex;align-items:center;gap:14px}
+.avatar{width:56px;height:56px;border-radius:50%;flex:none;background:var(--wash);border:1.5px solid var(--teal);color:var(--teal);font-weight:800;font-stretch:115%;display:flex;align-items:center;justify-content:center;font-size:19px}
+.person b{display:block;font-size:17px}
+.person span{font-size:15px;color:var(--muted)}
+.sup{margin-top:24px;font-size:17px}
+@media (max-width:760px){.team{grid-template-columns:1fr}}
+
+.cite{position:relative}
+.cite pre{margin:0;background:var(--well);border:1px solid var(--rule);border-radius:12px;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:14.5px;line-height:1.6}
+.cite button{margin-top:12px}
+
+.foot{border-top:1px solid var(--rule);margin-top:24px}
+.foot-in{max-width:var(--max);margin:0 auto;padding:28px 24px 40px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;font-size:15px;color:var(--muted)}
+.foot p{margin:0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <div class="topbar-in">
+    <a class="brand" href="#top">Deictic Loop</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#problem">Problem</a><a href="#contributions">Contributions</a><a href="#system">System</a>
+      <a href="#walkthrough">Walkthrough</a><a href="#grounding">Grounding</a><a href="#data">Data</a>
+      <a href="#evaluation">Evaluation</a><a href="#status">Status</a><a href="#team">Team</a><a href="#cite">Cite</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero" id="top">
+  <div>
+    <h1>Closing the Deictic Loop</h1>
+    <p class="sub">Bidirectional deictic grounding for gesture-conditioned vision-language-action navigation on a quadruped</p>
+    <p class="authors">Pulitha Gunawardana, Agra Navaratne, Rivikula Fernando</p>
+    <p class="affil">Supervised by Dr. Dulanga Weerakoon and Dr. Darshana Rathnayake<br>Department of Electronic and Telecommunication Engineering, University of Moratuwa, Sri Lanka</p>
+    <ul class="links">
+      <li><a class="btn" href="https://github.com/silveradium/Diectic-VLA-FYP"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>Code</a></li>
+      <li><a class="btn" href="assets/Poster_A1_landscape.pdf"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 15l3-4 3 3 2-2 3 3"></path></svg>Poster</a></li>
+      <li><a class="btn" aria-disabled="true" role="link"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><path d="M14 3v6h6"></path></svg>Paper, in preparation</a></li>
+      <li><a class="btn" aria-disabled="true" role="link"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M10 8.5v7l6-3.5z"></path></svg>Demo video, coming soon</a></li>
+    </ul>
+    <p class="lead">Pointing is the quickest way to say “that one.” A robot running a vision-language-action model answers seconds later. By then the gesture is over, and if the robot has turned in the meantime, a remembered direction is off by exactly that turn. We anchor the pointing ray in the world frame the moment it is seen, let NaVILA pick the target from the live camera view, and have a Unitree Go2 turn, ask, and take a correction before it walks.</p>
+  </div>
+
+  <div class="demo" aria-labelledby="demoT">
+    <div class="demo-head">
+      <h2 id="demoT">Try the loop: point at a box</h2>
+      <p>Sketch of the protocol, not live robot output</p>
+    </div>
+    <svg id="scene" class="scene" viewBox="0 0 640 380" role="group" aria-label="Top-down room: you, the robot, and three boxes you can point at"><defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E3E8ED" stroke-width="1"></path></pattern><marker id="hr" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#C62828"></path></marker></defs><rect x="0" y="0" width="640" height="380" fill="#FFFFFF"></rect><rect x="0" y="0" width="640" height="380" fill="url(#grid)"></rect><g class="tbox" data-k="0" tabindex="0" role="button" aria-label="Point at the top box"><rect class="hit" x="506" y="66" width="68" height="68" fill="transparent"></rect><rect class="face" x="522" y="82" width="36" height="36" rx="4"></rect></g><g class="tbox" data-k="1" tabindex="0" role="button" aria-label="Point at the middle box"><rect class="hit" x="546" y="156" width="68" height="68" fill="transparent"></rect><rect class="face" x="562" y="172" width="36" height="36" rx="4"></rect></g><g class="tbox" data-k="2" tabindex="0" role="button" aria-label="Point at the bottom box"><rect class="hit" x="506" y="246" width="68" height="68" fill="transparent"></rect><rect class="face" x="522" y="262" width="36" height="36" rx="4"></rect></g><line id="ray" x1="0" y1="0" x2="0" y2="0" stroke="#1F6FB8" stroke-width="3" stroke-dasharray="9 7" opacity="0"></line><text id="rayTag" x="0" y="0" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" font-weight="700" fill="#1F6FB8" opacity="0">anchored ray</text><line id="heading" x1="0" y1="0" x2="0" y2="0" stroke="#E07B2E" stroke-width="3" stroke-dasharray="7 6" opacity="0"></line><path id="arc" d="" fill="none" stroke="#C62828" stroke-width="3" marker-end="url(#hr)" opacity="0"></path><text id="arcTag" x="0" y="0" font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="20" fill="#C62828" opacity="0">Δψ</text><circle id="ring" cx="110" cy="190" r="34" fill="none" stroke="#2E5E70" stroke-width="4" stroke-dasharray="213.6" stroke-dashoffset="213.6" transform="rotate(-90 110 190)" opacity="0"></circle><g id="user" transform="translate(110 190) rotate(0)"><g id="arm" opacity="0"><path d="M 2 13 L 34 13" stroke="#1F6FB8" stroke-width="6" stroke-linecap="round"></path><circle cx="37" cy="13" r="4.5" fill="#E0B48C"></circle></g><ellipse cx="0" cy="0" rx="11" ry="19" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2.5"></ellipse><circle cx="1" cy="0" r="9" fill="#E0B48C" stroke="#8A6A4C" stroke-width="1.5"></circle></g><text x="110" y="238" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="700" fill="#1F6FB8">you</text><g id="robot" transform="translate(300 286) rotate(-150)"><path d="M 34 0 L 180 -60 L 180 60 Z" fill="#E07B2E" fill-opacity="0.05" stroke="#E07B2E" stroke-opacity="0.28" stroke-dasharray="4 4"></path><rect x="-26" y="-23" width="12" height="7" rx="2.5" fill="#8A5A35"></rect><rect x="14" y="-23" width="12" height="7" rx="2.5" fill="#8A5A35"></rect><rect x="-26" y="16" width="12" height="7" rx="2.5" fill="#8A5A35"></rect><rect x="14" y="16" width="12" height="7" rx="2.5" fill="#8A5A35"></rect><rect x="-29" y="-17" width="58" height="34" rx="8" fill="#F6D2B2" stroke="#C4621D" stroke-width="2.5"></rect><rect x="20" y="-11" width="14" height="22" rx="4" fill="#C4621D"></rect><circle id="flash" cx="34" cy="0" r="6" fill="#FFFFFF" stroke="#E07B2E" stroke-width="2" opacity="0"></circle></g><g id="bubble" opacity="0"><rect id="bubbleBox" x="190" y="330" width="220" height="30" rx="15" fill="#FFF3E8" stroke="#E07B2E" stroke-width="1.8"></rect><text id="bubbleText" x="300" y="350" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" fill="#16202A">Is this the direction?</text></g><text x="632" y="372" text-anchor="end" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" fill="#3D4852">top-down view; “right” is the robot’s right</text></svg>
+    <ol class="chips" aria-label="Protocol state">
+      <li class="chip">Perceived</li><li class="chip">Interpreted</li><li class="chip">Committed</li><li class="chip">Executing</li>
+    </ol>
+    <ul class="log" id="log" aria-live="polite"></ul>
+    <div class="controls" id="controls"></div>
+    <div class="demo-foot">
+      <label><input type="checkbox" id="mistake" checked>Robot picks the wrong box first</label>
+      <button type="button" class="linkbtn" id="demoReset">Reset</button>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="problem" aria-labelledby="h-problem">
+  <h2 id="h-problem">The problem</h2>
+  <div class="body">
+    <p>A pointing gesture lasts about one to two seconds, and the direction it gives only makes sense relative to where the robot was when it saw it.</p>
+    <p>VLA models are slow on edge hardware. While one is still running, the robot may keep turning. If the pointing ray is stored in the robot’s own body frame, it turns with the robot, so by the time the model uses it the ray is wrong by exactly the rotation <i class="m">Δθ</i>. That is a geometric identity, not sensor noise: it can be derived before any experiment and removed by design.</p>
+    <p>Small angles matter at room scale. LEGS-POMDP reports an angular error of 14.4°, which is about 1.3 m off at 5 m.</p>
+    <div class="gap"><p><b>The gap.</b> No existing system puts these together: pointing input, VLA-driven locomotion on a quadruped, and a channel for the robot to show and check what it understood. We compare directly against the closest prior work, including GIVE and LEGS-POMDP.</p></div>
+    <figure class="geo">
+      <svg id="geo" class="ill" viewBox="0 0 600 340" role="img" aria-label="Top-down sketch of the pointing ray: the body-frame ray rotates with the robot and misses the target; the world-anchored ray stays on it."><defs><marker id="gb" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#1F6FB8"></path></marker><marker id="gr" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#C62828"></path></marker><marker id="gk" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#59636E"></path></marker></defs><rect x="1" y="1" width="598" height="338" rx="10" fill="#F6F8FA" stroke="#C9D3DB" stroke-width="1.5"></rect><line x1="22" y1="30" x2="56" y2="30" stroke="#1F6FB8" stroke-width="3.5"></line><text x="64" y="35" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A">world-anchored ray (ours)</text><line x1="22" y1="56" x2="56" y2="56" stroke="#C62828" stroke-width="3.5" stroke-dasharray="7 5"></line><text x="64" y="61" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A">body-frame ray (naïve)</text><rect id="gT" x="0" y="0" width="26" height="26" rx="3" fill="#DDEFD3" stroke="#2E7D32" stroke-width="2.5"></rect><text id="gTl" x="0" y="0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="700" fill="#2E7D32">target</text><line id="gTrue" x1="60" y1="200" x2="0" y2="0" stroke="#1F6FB8" stroke-width="3.5" marker-end="url(#gb)"></line><line id="gWrong" x1="60" y1="200" x2="0" y2="0" stroke="#C62828" stroke-width="3.5" stroke-dasharray="7 5" marker-end="url(#gr)"></line><line id="gMiss" x1="0" y1="0" x2="0" y2="0" stroke="#59636E" stroke-width="1.6" stroke-dasharray="2 4"></line><text id="gE" x="0" y="0" font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="20" fill="#16202A">e</text><path id="gArc" d="" fill="none" stroke="#16202A" stroke-width="1.8"></path><text id="gTh" x="0" y="0" font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="19" fill="#16202A">Δθ</text><text id="gD" x="0" y="0" font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="19" fill="#16202A">d</text><g transform="translate(44 208) rotate(-15)"><ellipse cx="0" cy="0" rx="8" ry="14" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2"></ellipse><circle cx="1" cy="0" r="6.5" fill="#E0B48C" stroke="#8A6A4C" stroke-width="1.2"></circle></g><text x="40" y="248" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="700" fill="#1F6FB8">user</text><g id="gRob"><g transform="translate(0 0) rotate(0)"><rect x="-18" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-18" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-20" y="-12" width="40" height="24" rx="6" fill="#F6D2B2" stroke="#C4621D" stroke-width="2"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="#C4621D"></rect></g></g><g transform="translate(200 292) rotate(-100)"><rect x="-20" y="-12" width="40" height="24" rx="6" fill="none" stroke="#8C96A0" stroke-width="2" stroke-dasharray="4 3"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="none" stroke="#8C96A0" stroke-width="2" stroke-dasharray="3 3"></rect></g><text id="gRth" x="0" y="0" text-anchor="middle" font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="17" fill="#59636E">Δθ</text><path id="gRarc" d="" fill="none" stroke="#59636E" stroke-width="1.8" marker-end="url(#gk)"></path><text x="330" y="326" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="400" fill="#3D4852">the robot turns Δθ while the VLA runs</text></svg>
+      <div class="geo-controls">
+        <div><label for="dth"><span>Robot turn during inference, <i class="m">Δθ</i></span><output id="dthOut" for="dth">14.4°</output></label>
+        <input type="range" id="dth" min="0" max="30" step="0.1" value="14.4"></div>
+        <div><label for="dist"><span>Distance to target, <i class="m">d</i></span><output id="distOut" for="dist">5.0 m</output></label>
+        <input type="range" id="dist" min="2" max="10" step="0.5" value="5"></div>
+        <p class="readout" aria-live="polite">Body-frame ray misses by <b class="bad" id="missOut">1.28 m</b>, since <i class="m">e</i> = <i class="m">d</i>·tan <i class="m">Δθ</i>. World-anchored ray misses by <b class="ok" id="missOut2">0 m</b>.</p>
+        <button type="button" class="ghost" id="preset">Use the LEGS-POMDP case: 14.4° at 5 m</button>
+      </div>
+      <figcaption style="grid-column:1/-1">Drag the sliders. The body-frame ray swings with the robot; the ray anchored in the world frame stays on the target however far the robot turns.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="sec" id="contributions" aria-labelledby="h-contrib">
+  <h2 id="h-contrib">Contributions</h2>
+  <div class="body">
+    <ul class="contrib">
+      <li><h3>A provable error model</h3><p>An un-anchored pointing ray is off by exactly |<i class="m">Δθ</i>|, the rotation made during inference. The claim holds before any data is collected.</p></li>
+      <li><h3>Gesture memory buffer</h3><p>A fast path that anchors each pointing ray in the world frame through TF2 at capture time, then re-projects it into the robot’s current frame when the VLA needs it.</p></li>
+      <li><h3>Bidirectional grounding</h3><p>A four-state protocol (Perceived, Interpreted, Committed, Executing) in which the robot turns to show its pick, asks, and accepts a confirmation or a correction.</p></li>
+      <li><h3>Gesture-grounding metrics</h3><p>Deictic heading error, instruction capture rate and target selection accuracy, plus how each degrades as injected latency grows from 1 to 5 s, benchmarked in HuNavSim.</p></li>
+    </ul>
+  </div>
+</section>
+
+<section class="sec" id="system" aria-labelledby="h-system">
+  <h2 id="h-system">System</h2>
+  <div class="body">
+    <p>Two paths run side by side. A fast path catches the gesture and stores it in a form that survives the robot’s motion. A slow path runs the VLA on the current view. The grounding manager sits between the VLA and the legs, so nothing moves until the user agrees.</p>
+  </div>
+  <figure class="wide">
+    <div class="scroll"><svg viewBox="0 0 1200 500" role="img" aria-labelledby="archT"><title id="archT">System architecture: speech and video inputs feed gesture perception, the gesture memory buffer, a deictic prompt, NaVILA, the grounding manager with a question-and-reply loop to the user, and locomotion on the Go2.</title><defs><marker id="ak" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#1A1A1A"></path></marker><marker id="ar" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#C62828"></path></marker></defs><line x1="155" y1="70" x2="155" y2="470" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round"></line><line x1="155" y1="70" x2="214" y2="70" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><rect x="220" y="44" width="160" height="52" rx="6" fill="#DCE9F6" stroke="#5B7FA8" stroke-width="2"></rect><text x="300" y="75" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A">Speech recognition</text><line x1="380" y1="70" x2="424" y2="70" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><polygon points="430,44 605,52 605,88 430,96" fill="#DDEFD3" stroke="#6E9C5C" stroke-width="2"></polygon><text x="512" y="75" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A">Instruction parser</text><line x1="605" y1="70" x2="890" y2="70" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round"></line><line x1="890" y1="70" x2="890" y2="158" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="186" y="60" text-anchor="middle" font-family="STIX Two Text, Times New Roman, serif" font-size="16" font-weight="400" fill="#16202A" font-style="italic">A</text><text x="404" y="60" text-anchor="middle" font-family="STIX Two Text, Times New Roman, serif" font-size="16" font-weight="400" fill="#16202A" font-style="italic">T</text><text x="748" y="60" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">ℓ</tspan>  verb + referent: “go to that box”</text><rect x="10" y="195" width="120" height="110" rx="3" fill="#FFFFFF" stroke="#222222" stroke-width="2"></rect><svg x="12" y="197" width="116" height="106" viewBox="0 0 196 156" preserveAspectRatio="xMidYMid meet"><rect x="0" y="0" width="196" height="104" fill="#EDF0F3"></rect><rect x="0" y="104" width="196" height="52" fill="#DADFE5"></rect><rect x="128" y="96" width="62" height="6" fill="#B98E5E"></rect><rect x="132" y="102" width="5" height="40" fill="#9C7449"></rect><rect x="181" y="102" width="5" height="40" fill="#9C7449"></rect><rect x="150" y="76" width="22" height="20" fill="#D9B07A" stroke="#8C6A3C" stroke-width="1.2"></rect><g transform="translate(58 150) scale(0.6 0.6)"><rect x="-11" y="-92" width="10" height="88" rx="3" fill="#2F3640"></rect><rect x="2" y="-92" width="10" height="88" rx="3" fill="#2F3640"></rect><rect x="-14" y="-6" width="14" height="6" rx="2" fill="#1C1F24"></rect><rect x="1" y="-6" width="15" height="6" rx="2" fill="#1C1F24"></rect><path d="M -10 -160 L -14 -102" stroke="#34495E" stroke-width="9" stroke-linecap="round" fill="none"></path><rect x="-15" y="-170" width="30" height="82" rx="10" fill="#3E5873"></rect><rect x="-4" y="-179" width="8" height="10" fill="#E0B48C"></rect><circle cx="0" cy="-192" r="15" fill="#E0B48C"></circle><path d="M -15 -192 A 15 15 0 0 1 15 -192 Q 0 -201 -15 -192 Z" fill="#2B2B2B"></path><path d="M 8 -160 L 70 -176" stroke="#3E5873" stroke-width="10" stroke-linecap="round" fill="none"></path><circle cx="74" cy="-177" r="5.5" fill="#E0B48C"></circle></g></svg><text x="70" y="326" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="400" fill="#3D4852">camera + mic</text><line x1="130" y1="250" x2="173" y2="250" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="166" y="241" text-anchor="middle" font-family="STIX Two Text, Times New Roman, serif" font-size="15" font-weight="400" fill="#16202A" font-style="italic">V</text><rect x="180" y="170" width="170" height="160" rx="12" fill="#FFFFFF" stroke="#2F3B45" stroke-width="2"></rect><text x="265" y="193" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="700" fill="#16202A">(a) Gesture perception</text><svg x="233" y="202" width="64" height="64" viewBox="0 0 106 106" preserveAspectRatio="xMidYMid meet"><rect x="0" y="0" width="106" height="106" fill="#000000"></rect><circle cx="42" cy="22" r="7" fill="none" stroke="#FF2D92" stroke-width="2.4"></circle><line x1="42" y1="29" x2="42" y2="38" stroke="#FF3B30" stroke-width="3"></line><line x1="31" y1="38" x2="53" y2="38" stroke="#FF3B30" stroke-width="3"></line><line x1="42" y1="38" x2="42" y2="68" stroke="#FF3B30" stroke-width="3"></line><line x1="35" y1="68" x2="49" y2="68" stroke="#FF3B30" stroke-width="3"></line><line x1="35" y1="68" x2="33" y2="98" stroke="#00C7BE" stroke-width="3"></line><line x1="49" y1="68" x2="52" y2="98" stroke="#0A84FF" stroke-width="3"></line><line x1="31" y1="38" x2="26" y2="63" stroke="#34C759" stroke-width="3"></line><line x1="53" y1="38" x2="73" y2="33" stroke="#FF9500" stroke-width="3"></line><line x1="73" y1="33" x2="92" y2="29" stroke="#FFD60A" stroke-width="3"></line><line x1="92" y1="29" x2="106" y2="26" stroke="#FFFFFF" stroke-width="1.6" stroke-dasharray="3 3"></line><circle cx="42" cy="38" r="2.6" fill="#FFFFFF"></circle><circle cx="31" cy="38" r="2.6" fill="#FFFFFF"></circle><circle cx="53" cy="38" r="2.6" fill="#FFFFFF"></circle><circle cx="73" cy="33" r="2.6" fill="#FFFFFF"></circle><circle cx="92" cy="29" r="2.6" fill="#FFFFFF"></circle><circle cx="26" cy="63" r="2.6" fill="#FFFFFF"></circle><circle cx="35" cy="68" r="2.6" fill="#FFFFFF"></circle><circle cx="49" cy="68" r="2.6" fill="#FFFFFF"></circle><circle cx="33" cy="98" r="2.6" fill="#FFFFFF"></circle><circle cx="52" cy="98" r="2.6" fill="#FFFFFF"></circle></svg><text x="265" y="290" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">pose → 4 ray guesses</text><text x="265" y="309" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">→ hold detector</text><line x1="350" y1="250" x2="393" y2="250" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="374" y="240" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">f</tspan>*, <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">r</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">C</tspan><tspan dy="-4">&#8203;</tspan></text><rect x="400" y="175" width="190" height="150" rx="10" fill="#FFFFFF" stroke="#C62828" stroke-width="3.5"></rect><text x="495" y="199" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">(b) Gesture memory</text><text x="495" y="217" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">buffer</text><text x="495" y="241" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#3D4852">anchor at capture:</text><text x="495" y="261" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">r</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">W</tspan><tspan dy="-4">&#8203;</tspan>= <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">T</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">WC</tspan><tspan dy="-4">&#8203;</tspan>(<tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">t</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">0</tspan><tspan dy="-4">&#8203;</tspan>) <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">r</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">C</tspan><tspan dy="-4">&#8203;</tspan></text><text x="495" y="285" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#3D4852">re-project at use:</text><text x="495" y="305" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">r</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">t</tspan><tspan dy="-4">&#8203;</tspan>= <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">T</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">BW</tspan><tspan dy="-4">&#8203;</tspan>(<tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">t</tspan>) <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">r</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">W</tspan><tspan dy="-4">&#8203;</tspan></text><text x="495" y="164" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" font-weight="400" fill="#3D4852" font-style="italic">fast path, camera rate</text><rect x="430" y="380" width="130" height="44" rx="6" fill="#F3F5F7" stroke="#59636E" stroke-width="2"></rect><text x="495" y="407" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">TF2 / odometry</text><line x1="495" y1="380" x2="495" y2="333" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><line x1="590" y1="250" x2="628" y2="250" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="611" y="240" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">r</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">t</tspan><tspan dy="-4">&#8203;</tspan></text><polygon points="635,200 765,216 765,284 635,300" fill="#FFF4C2" stroke="#B39B3B" stroke-width="2"></polygon><text x="696" y="238" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">Deictic</text><text x="696" y="256" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">prompt</text><text x="696" y="278" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" font-weight="400" fill="#16202A">draw <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">r</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">t</tspan><tspan dy="-4">&#8203;</tspan>on <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">I</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">t</tspan><tspan dy="-4">&#8203;</tspan></text><line x1="155" y1="470" x2="700" y2="470" stroke="#1A1A1A" stroke-width="2.5" stroke-linecap="round"></line><line x1="700" y1="470" x2="700" y2="300" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="420" y="460" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">I</tspan><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic" font-size="0.72em" dy="4">t</tspan><tspan dy="-4">&#8203;</tspan> live camera frame at time <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">t</tspan></text><line x1="765" y1="250" x2="808" y2="250" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><rect x="815" y="165" width="150" height="170" rx="14" fill="#E9E1F5" stroke="#6A4C9C" stroke-width="3"></rect><text x="890" y="194" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">(c) NaVILA VLA</text><text x="890" y="220" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">reads the frame</text><text x="890" y="240" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">+ ray + <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">ℓ</tspan></text><text x="890" y="260" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">→ action <tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">a</tspan></text><text x="890" y="292" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" font-weight="400" fill="#3D4852" font-style="italic">“turn right 30°”</text><text x="890" y="353" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" font-weight="400" fill="#3D4852" font-style="italic">slow path, VLA inference</text><line x1="965" y1="232" x2="1012" y2="232" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="990" y="223" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">a</tspan></text><line x1="1020" y1="268" x2="973" y2="268" stroke="#C62828" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#ar)" stroke-linecap="round"></line><text x="993" y="291" text-anchor="middle" font-family="STIX Two Text, Times New Roman, serif" font-size="15" font-weight="400" fill="#C62828" font-style="italic">Δψ</text><rect x="1020" y="195" width="170" height="110" rx="10" fill="#DDEBF0" stroke="#2E5E70" stroke-width="3"></rect><text x="1105" y="222" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">(d) Grounding</text><text x="1105" y="240" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">manager</text><text x="1105" y="263" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">4-state protocol</text><text x="1105" y="282" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">turn, ask, wait</text><rect x="1030" y="20" width="150" height="110" rx="12" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="2.5"></rect><svg x="1042" y="48" width="30" height="44" viewBox="0 0 50 74" preserveAspectRatio="xMidYMid meet"><circle cx="25" cy="14" r="11" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2.5"></circle><path d="M 4 72 L 4 46 Q 4 30 25 30 Q 46 30 46 46 L 46 72" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2.5"></path></svg><text x="1084" y="58" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="700" fill="#1F6FB8">User</text><text x="1084" y="80" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">confirms</text><text x="1084" y="99" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">or corrects</text><line x1="1077" y1="195" x2="1077" y2="138" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><line x1="1133" y1="130" x2="1133" y2="187" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="1064" y="168" text-anchor="end" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">q</tspan></text><text x="1146" y="168" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="15" font-weight="400" fill="#16202A"><tspan font-family="STIX Two Text, Times New Roman, serif" font-style="italic">u</tspan></text><line x1="1105" y1="305" x2="1105" y2="372" stroke="#1A1A1A" stroke-width="2.5" marker-end="url(#ak)" stroke-linecap="round"></line><text x="1117" y="346" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13" font-weight="400" fill="#3D4852">execute</text><rect x="1020" y="380" width="170" height="110" rx="8" fill="#EFEFEF" stroke="#333333" stroke-width="2"></rect><text x="1105" y="403" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="14.5" font-weight="700" fill="#16202A">(e) Locomotion</text><text x="1105" y="423" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="13.5" font-weight="400" fill="#16202A">CHAMP → Go2</text><svg x="1062" y="430" width="86" height="56" viewBox="-62 -104 145 110"><g transform="translate(0 0) scale(1.0 1.0)"><path d="M 46 -58 L 32 -30 L 48 -2" stroke="#9AA1A9" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><path d="M -32 -58 L -46 -30 L -30 -2" stroke="#9AA1A9" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><rect x="-55" y="-82" width="110" height="34" rx="12" fill="#D5D9DE" stroke="#3A3F45" stroke-width="2"></rect><rect x="-30" y="-94" width="40" height="12" rx="3" fill="#5B636B"></rect><rect x="22" y="-100" width="20" height="18" rx="4" fill="#23272B"></rect><rect x="22" y="-93" width="20" height="3" fill="#6C757D"></rect><rect x="45" y="-88" width="30" height="32" rx="8" fill="#3A3F45"></rect><circle cx="73" cy="-72" r="5" fill="#0E1114" stroke="#9AA3AD" stroke-width="1.5"></circle><path d="M 35 -60 L 20 -32 L 36 -3" stroke="#3A3F45" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="35" cy="-60" r="7" fill="#3A3F45"></circle><circle cx="36" cy="-3" r="4.5" fill="#1F2226"></circle><path d="M -42 -60 L -57 -32 L -41 -3" stroke="#3A3F45" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="-42" cy="-60" r="7" fill="#3A3F45"></circle><circle cx="-41" cy="-3" r="4.5" fill="#1F2226"></circle></g></svg></svg></div>
+    <p class="hint">Scroll sideways to see the whole diagram.</p>
+    <figcaption>Letters match the notes below. The red dashed line is the correction path: a rejected pick goes back to NaVILA with a heading offset <i class="m">Δψ</i>.</figcaption>
+  </figure>
+  <dl class="stages wide">
+    <div><dt>Speech</dt><dd>Speech recognition and an instruction parser turn the spoken command into <i class="m">ℓ</i>: the verb plus the referent.</dd></div>
+    <div><dt>(a) Gesture perception</dt><dd>MediaPipe Pose Landmarker tracks the user. Four pointing-ray hypotheses come from the arm keypoints, and a scale-free hold detector decides when a point has been held.</dd></div>
+    <div><dt>(b) Gesture memory buffer</dt><dd>Keeps the pointing frame <i class="m">f</i>* and the ray, anchored with the camera pose at capture time <i class="m">t</i><sub>0</sub>. On use, it re-projects the ray into the robot’s current frame.</dd></div>
+    <div><dt>Deictic prompt</dt><dd>Draws the re-projected ray <i class="m">r</i><sub>t</sub> onto the live frame <i class="m">I</i><sub>t</sub>, so the VLA sees where the user pointed.</dd></div>
+    <div><dt>(c) NaVILA</dt><dd>The vision-language-action model reads the prompted frame with <i class="m">ℓ</i> and outputs a mid-level action such as a turn or a short walk.</dd></div>
+    <div><dt>(d) Grounding manager and (e) locomotion</dt><dd>Runs the four-state protocol and routes the user’s reply. Approved actions go to the CHAMP controller, which drives the Unitree Go2.</dd></div>
+  </dl>
+</section>
+
+<section class="sec" id="walkthrough" aria-labelledby="h-walk">
+  <h2 id="h-walk">Walkthrough</h2>
+  <div class="body">
+    <p>One instruction from start to finish, including a correction.</p>
+  </div>
+  <ol class="steps wide"><li><svg width="420" height="118" viewBox="0 0 420 118" role="img" aria-label="User points at a box and gives a spoken instruction" class="ill"><rect x="1" y="1" width="418" height="116" rx="8" fill="#F6F8FA" stroke="#C9D3DB" stroke-width="1.5"></rect><rect x="334.0" y="11.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><rect x="369.0" y="49.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><rect x="334.0" y="87.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><line x1="72.4" y1="50.1" x2="366" y2="60" stroke="#1F6FB8" stroke-width="2.5" stroke-dasharray="7 5"></line><g transform="translate(190 95) rotate(-157.83365417791757)"><rect x="-18" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-18" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-20" y="-12" width="40" height="24" rx="6" fill="#F6D2B2" stroke="#C4621D" stroke-width="2"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="#C4621D"></rect></g><g transform="translate(55 40) rotate(3.644489512771559)"><path d="M 0 9 L 16 9" stroke="#1F6FB8" stroke-width="4" stroke-linecap="round"></path><circle cx="18" cy="9" r="3" fill="#E0B48C"></circle><ellipse cx="0" cy="0" rx="8" ry="14" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2"></ellipse><circle cx="1" cy="0" r="6.5" fill="#E0B48C" stroke="#8A6A4C" stroke-width="1.2"></circle></g><path d="M 44 76 L 50 58 L 56 76 Z" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="1.5"></path><rect x="16" y="76" width="130" height="24" rx="12.0" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="1.5"></rect><rect x="45" y="76" width="10" height="3" fill="#FFFFFF"></rect><text x="81.0" y="93.04" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" fill="#151515">“go to that box”</text></svg><div class="step-t"><span class="num" aria-hidden="true">1</span><h3>Point and speak</h3></div><p>You point at a box and say “go to that box.” Speech carries the verb; the gesture resolves “that.”</p></li><li><svg width="420" height="118" viewBox="0 0 420 118" role="img" aria-label="Film strip of camera frames; the hold detector marks the pointing frame" class="ill"><rect x="1" y="1" width="418" height="116" rx="8" fill="#F6F8FA" stroke="#C9D3DB" stroke-width="1.5"></rect><rect x="30" y="28" width="64" height="46" rx="3" fill="#2E3338" stroke="#59636E" stroke-width="1.5"></rect><circle cx="54" cy="40" r="4.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"></circle><line x1="54" y1="45" x2="54" y2="62" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="54" y1="62" x2="50" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="54" y1="62" x2="58" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="54" y1="48" x2="57.0" y2="62.0" stroke="#FFC857" stroke-width="2"></line><rect x="104" y="28" width="64" height="46" rx="3" fill="#2E3338" stroke="#59636E" stroke-width="1.5"></rect><circle cx="128" cy="40" r="4.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"></circle><line x1="128" y1="45" x2="128" y2="62" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="128" y1="62" x2="124" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="128" y1="62" x2="132" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="128" y1="48" x2="137.0" y2="32.4" stroke="#FFC857" stroke-width="2"></line><rect x="178" y="28" width="64" height="46" rx="3" fill="#2E3338" stroke="#59636E" stroke-width="1.5"></rect><circle cx="202" cy="40" r="4.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"></circle><line x1="202" y1="45" x2="202" y2="62" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="202" y1="62" x2="198" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="202" y1="62" x2="206" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="202" y1="48" x2="219.7" y2="44.9" stroke="#FFC857" stroke-width="2"></line><rect x="252" y="28" width="64" height="46" rx="3" fill="#2E3338" stroke="#C62828" stroke-width="3.5"></rect><circle cx="276" cy="40" r="4.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"></circle><line x1="276" y1="45" x2="276" y2="62" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="276" y1="62" x2="272" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="276" y1="62" x2="280" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="276" y1="48" x2="294.0" y2="48.0" stroke="#FFC857" stroke-width="2"></line><rect x="326" y="28" width="64" height="46" rx="3" fill="#2E3338" stroke="#59636E" stroke-width="1.5"></rect><circle cx="350" cy="40" r="4.5" fill="none" stroke="#FFFFFF" stroke-width="1.6"></circle><line x1="350" y1="45" x2="350" y2="62" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="350" y1="62" x2="346" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="350" y1="62" x2="354" y2="72" stroke="#FFFFFF" stroke-width="1.6"></line><line x1="350" y1="48" x2="368.0" y2="48.0" stroke="#FFC857" stroke-width="2"></line><text x="284" y="20" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" font-weight="700" fill="#C62828">pointing frame f*</text><line x1="30" y1="90" x2="390" y2="90" stroke="#59636E" stroke-width="1.5"></line><path d="M 178 84 L 178 96 M 178 90 L 390 90 M 390 84 L 390 96" stroke="#151515" stroke-width="2" fill="none"></path><text x="284" y="110" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" fill="#151515">hold ≈ 1–2 s → anchor ray in world frame</text><text x="30" y="110" font-family="Archivo, sans-serif" font-size="13" fill="#3D4852">time →</text></svg><div class="step-t"><span class="num" aria-hidden="true">2</span><h3>Perceived</h3></div><p>The hold detector fires after about 1–2 s. The pointing frame <i class="m">f</i>* is kept and the ray is anchored in the world frame.</p></li><li><svg width="420" height="118" viewBox="0 0 420 118" role="img" aria-label="Robot camera view with the re-projected pointing ray drawn in and the chosen box outlined" class="ill"><rect x="1" y="1" width="418" height="116" rx="8" fill="#F6F8FA" stroke="#C9D3DB" stroke-width="1.5"></rect><rect x="2" y="2" width="416" height="62" fill="#E9EDF1"></rect><rect x="2" y="62" width="416" height="54" fill="#D6DCE2"></rect><rect x="120" y="40" width="30" height="26" fill="#D9B07A" stroke="#8C6A3C" stroke-width="1.5"></rect><rect x="205" y="44" width="40" height="34" fill="#D9B07A" stroke="#8C6A3C" stroke-width="1.5"></rect><rect x="300" y="48" width="34" height="28" fill="#D9B07A" stroke="#8C6A3C" stroke-width="1.5"></rect><defs><marker id="s3" orient="auto" markerWidth="4" markerHeight="4" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#1F6FB8"></path></marker></defs><line x1="40" y1="114" x2="212" y2="82" stroke="#1F6FB8" stroke-width="3.5" marker-end="url(#s3)"></line><text x="96" y="92" font-family="STIX Two Text, serif" font-style="italic" font-size="18" fill="#1F6FB8">r</text><text x="104" y="96" font-family="STIX Two Text, serif" font-style="italic" font-size="12" fill="#1F6FB8">t</text><rect x="197" y="36" width="56" height="50" fill="none" stroke="#2E7D32" stroke-width="3"></rect><rect x="197" y="17" width="56" height="19" fill="#2E7D32"></rect><text x="225" y="31" text-anchor="middle" font-family="Archivo, sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">target</text><path d="M 10 24 L 10 10 L 24 10" stroke="#59636E" stroke-width="2" fill="none"></path><path d="M 410 24 L 410 10 L 396 10" stroke="#59636E" stroke-width="2" fill="none"></path><path d="M 10 94 L 10 108 L 24 108" stroke="#59636E" stroke-width="2" fill="none"></path><path d="M 410 94 L 410 108 L 396 108" stroke="#59636E" stroke-width="2" fill="none"></path><text x="404" y="106" text-anchor="end" font-family="Archivo, sans-serif" font-size="13" fill="#3D4852">robot camera, time t</text></svg><div class="step-t"><span class="num" aria-hidden="true">3</span><h3>Interpreted</h3></div><p>NaVILA reads the live camera frame with the re-projected ray <i class="m">r</i><sub>t</sub> drawn in, and picks the box it thinks you meant.</p></li><li><svg width="420" height="118" viewBox="0 0 420 118" role="img" aria-label="Robot turns toward its pick and asks the user to confirm" class="ill"><rect x="1" y="1" width="418" height="116" rx="8" fill="#F6F8FA" stroke="#C9D3DB" stroke-width="1.5"></rect><rect x="334.0" y="11.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><rect x="369.0" y="49.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><rect x="334.0" y="87.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><line x1="228.1" y1="83.0" x2="332.6" y2="28.5" stroke="#E07B2E" stroke-width="2.5" stroke-dasharray="6 5"></line><g transform="translate(55 40) rotate(20)"><ellipse cx="0" cy="0" rx="8" ry="14" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2"></ellipse><circle cx="1" cy="0" r="6.5" fill="#E0B48C" stroke="#8A6A4C" stroke-width="1.2"></circle></g><g transform="translate(205 95) rotate(-27.538823349575534)"><rect x="-18" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-18" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-20" y="-12" width="40" height="24" rx="6" fill="#F6D2B2" stroke="#C4621D" stroke-width="2"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="#C4621D"></rect></g><path d="M 160 86 L 186 94 L 172 86 Z" fill="#FFF3E8" stroke="#E07B2E" stroke-width="1.5"></path><rect x="14" y="86" width="162" height="24" rx="12.0" fill="#FFF3E8" stroke="#E07B2E" stroke-width="1.5"></rect><rect x="161" y="86" width="10" height="3" fill="#FFF3E8"></rect><text x="95.0" y="103.04" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" fill="#151515">“Is this the direction?”</text></svg><div class="step-t"><span class="num" aria-hidden="true">4</span><h3>Committed</h3></div><p>The robot turns to face its pick, which already shows you what it understood, then asks “Is this the direction?”</p></li><li><svg width="420" height="118" viewBox="0 0 420 118" role="img" aria-label="User rejects and says turn more right; robot rotates further and asks again" class="ill"><rect x="1" y="1" width="418" height="116" rx="8" fill="#F6F8FA" stroke="#C9D3DB" stroke-width="1.5"></rect><defs><marker id="s5" orient="auto" markerWidth="4" markerHeight="4" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#C62828"></path></marker></defs><rect x="334.0" y="11.0" width="22" height="22" rx="3" fill="#FBE3E1" stroke="#C62828" stroke-width="3"></rect><rect x="369.0" y="49.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><rect x="334.0" y="87.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><line x1="230.5" y1="89.9" x2="366.3" y2="62.7" stroke="#E07B2E" stroke-width="2.5" stroke-dasharray="6 5"></line><g transform="translate(55 40) rotate(20)"><ellipse cx="0" cy="0" rx="8" ry="14" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2"></ellipse><circle cx="1" cy="0" r="6.5" fill="#E0B48C" stroke="#8A6A4C" stroke-width="1.2"></circle></g><g transform="translate(205 95) rotate(-27.538823349575534)"><rect x="-20" y="-12" width="40" height="24" rx="6" fill="none" stroke="#8C96A0" stroke-width="2" stroke-dasharray="4 3"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="none" stroke="#8C96A0" stroke-width="2" stroke-dasharray="3 3"></rect></g><g transform="translate(205 95) rotate(-11.309932474020213)"><rect x="-18" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-18" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-20" y="-12" width="40" height="24" rx="6" fill="#F6D2B2" stroke="#C4621D" stroke-width="2"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="#C4621D"></rect></g><path d="M 240.5 76.5 A 40 40 0 0 1 244.2 87.2" fill="none" stroke="#C62828" stroke-width="2.2" marker-end="url(#s5)"></path><text x="259.7" y="79.7" font-family="STIX Two Text, serif" font-style="italic" font-size="17" fill="#C62828">Δψ</text><path d="M 44 60 L 50 52 L 56 60 Z" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="1.5"></path><rect x="14" y="60" width="150" height="24" rx="12.0" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="1.5"></rect><rect x="45" y="60" width="10" height="3" fill="#FFFFFF"></rect><text x="89.0" y="77.04" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" fill="#151515">“No, turn more right”</text><path d="M 146 92 L 184 98 L 158 92 Z" fill="#FFF3E8" stroke="#E07B2E" stroke-width="1.5"></path><rect x="66" y="92" width="96" height="22" rx="11.0" fill="#FFF3E8" stroke="#E07B2E" stroke-width="1.5"></rect><rect x="147" y="92" width="10" height="3" fill="#FFF3E8"></rect><text x="114.0" y="108.04" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" fill="#151515">“This one?”</text></svg><div class="step-t"><span class="num" aria-hidden="true">5</span><h3>Corrected</h3></div><p>“No, turn more right.” The robot applies a heading correction <i class="m">Δψ</i>, turns, and asks again.</p></li><li><svg width="420" height="118" viewBox="0 0 420 118" role="img" aria-label="After confirmation the robot walks to the box and stops in front of it" class="ill"><rect x="1" y="1" width="418" height="116" rx="8" fill="#F6F8FA" stroke="#C9D3DB" stroke-width="1.5"></rect><rect x="334.0" y="11.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><rect x="369.0" y="49.0" width="22" height="22" rx="3" fill="#DDEFD3" stroke="#2E7D32" stroke-width="3"></rect><rect x="334.0" y="87.0" width="22" height="22" rx="3" fill="#D9B07A" stroke="#8C6A3C" stroke-width="2"></rect><line x1="228" y1="89" x2="306" y2="66" stroke="#E07B2E" stroke-width="2.5" stroke-dasharray="2 6" stroke-linecap="round"></line><g transform="translate(205 95) rotate(-16)"><rect x="-20" y="-12" width="40" height="24" rx="6" fill="none" stroke="#8C96A0" stroke-width="2" stroke-dasharray="4 3"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="none" stroke="#8C96A0" stroke-width="2" stroke-dasharray="3 3"></rect></g><g transform="translate(330 60) rotate(0)"><rect x="-18" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-18" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-20" y="-12" width="40" height="24" rx="6" fill="#F6D2B2" stroke="#C4621D" stroke-width="2"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="#C4621D"></rect></g><g transform="translate(55 40) rotate(20)"><ellipse cx="0" cy="0" rx="8" ry="14" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2"></ellipse><circle cx="1" cy="0" r="6.5" fill="#E0B48C" stroke="#8A6A4C" stroke-width="1.2"></circle></g><path d="M 42 62 L 48 54 L 54 62 Z" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="1.5"></path><rect x="14" y="62" width="70" height="24" rx="12.0" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="1.5"></rect><rect x="43" y="62" width="10" height="3" fill="#FFFFFF"></rect><text x="49.0" y="79.04" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" fill="#151515">“Yes.”</text><path d="M 371 60 L 378 67 L 391 52" stroke="#2E7D32" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg><div class="step-t"><span class="num" aria-hidden="true">6</span><h3>Executing</h3></div><p>“Yes.” Only now does the robot walk to the box, and it stops in front of it.</p></li></ol>
+</section>
+
+<section class="sec" id="grounding" aria-labelledby="h-ground">
+  <h2 id="h-ground">Grounding loop</h2>
+  <div class="body">
+    <p>The robot never walks on a guess. It first turns to face what it thinks you meant, which you can read at a glance, then asks. Your reply decides what happens next.</p>
+    <figure>
+      <div class="scroll narrow"><svg viewBox="0 0 1100 460" role="img" aria-labelledby="loopT"><title id="loopT">Grounding state machine: Perceived, Interpreted, Committed, then a reply decision. Yes leads to Executing; more right leads to Correct and back to Committed; a new instruction returns to Interpreted; pointing again returns to Perceived.</title><defs><marker id="lk" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#1A1A1A"></path></marker><marker id="lg" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#2E7D32"></path></marker><marker id="lr" orient="auto" markerWidth="4" markerHeight="4" refX="3" refY="2" overflow="visible" markerUnits="strokeWidth"><path d="M0 0 L4 2 L0 4 Z" fill="#C62828"></path></marker></defs><line x1="195" y1="75" x2="279" y2="75" stroke="#1A1A1A" stroke-width="3" marker-end="url(#lk)" stroke-linecap="round"></line><line x1="475" y1="75" x2="559" y2="75" stroke="#1A1A1A" stroke-width="3" marker-end="url(#lk)" stroke-linecap="round"></line><line x1="685" y1="125" x2="685" y2="179" stroke="#1A1A1A" stroke-width="3" marker-end="url(#lk)" stroke-linecap="round"></line><line x1="685" y1="305" x2="685" y2="354" stroke="#2E7D32" stroke-width="3" marker-end="url(#lg)" stroke-linecap="round"></line><line x1="765" y1="245" x2="898" y2="245" stroke="#C62828" stroke-width="3" marker-end="url(#lr)" stroke-linecap="round"></line><line x1="1000" y1="200" x2="1000" y2="75" stroke="#C62828" stroke-width="3" stroke-linecap="round"></line><line x1="1000" y1="75" x2="812" y2="75" stroke="#C62828" stroke-width="3" marker-end="url(#lr)" stroke-linecap="round"></line><line x1="605" y1="245" x2="100" y2="245" stroke="#1A1A1A" stroke-width="3" stroke-linecap="round"></line><line x1="380" y1="245" x2="380" y2="131" stroke="#1A1A1A" stroke-width="3" marker-end="url(#lk)" stroke-linecap="round"></line><line x1="100" y1="245" x2="100" y2="131" stroke="#1A1A1A" stroke-width="3" marker-end="url(#lk)" stroke-linecap="round"></line><rect x="5" y="25" width="190" height="100" rx="10" fill="#FFFFFF" stroke="#2E5E70" stroke-width="2.5"></rect><text x="100.0" y="57.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="700" fill="#16202A">Perceived</text><text x="100.0" y="81.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">hold detected,</text><text x="100.0" y="105.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">ray anchored</text><rect x="285" y="25" width="190" height="100" rx="10" fill="#FFFFFF" stroke="#2E5E70" stroke-width="2.5"></rect><text x="380.0" y="57.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="700" fill="#16202A">Interpreted</text><text x="380.0" y="81.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">VLM picks</text><text x="380.0" y="105.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">a target</text><rect x="565" y="25" width="240" height="100" rx="10" fill="#DDEBF0" stroke="#2E5E70" stroke-width="2.5"></rect><text x="685.0" y="57.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="700" fill="#16202A">Committed</text><text x="685.0" y="81.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">turn to face it,</text><text x="685.0" y="105.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">ask q</text><polygon points="685,185 765,245 685,305 605,245" fill="#2E5E70"></polygon><text x="685" y="252" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="700" fill="#FFFFFF">Reply?</text><rect x="565" y="360" width="240" height="90" rx="10" fill="#DDEFD3" stroke="#2E7D32" stroke-width="2.5"></rect><text x="685.0" y="399.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="700" fill="#16202A">Executing</text><text x="685.0" y="423.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">approach and stop</text><rect x="905" y="200" width="190" height="90" rx="10" fill="#FBE3E1" stroke="#C62828" stroke-width="2.5"></rect><text x="1000.0" y="239.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="700" fill="#16202A">Correct</text><text x="1000.0" y="263.0" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="19" font-weight="400" fill="#16202A">re-turn by Δψ</text><text x="697" y="157" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="18" font-weight="400" fill="#16202A">ask</text><text x="697" y="337" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="18" font-weight="700" fill="#2E7D32">“yes”</text><text x="835" y="233" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="18" font-weight="700" fill="#C62828">“more right”</text><text x="565" y="233" text-anchor="middle" font-family="Archivo, Helvetica Neue, sans-serif" font-size="18" font-weight="700" fill="#16202A">no</text><text x="392" y="191" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="18" font-weight="400" fill="#16202A">new instruction</text><text x="112" y="191" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="18" font-weight="400" fill="#16202A">point again</text><rect x="840" y="305" width="237" height="30" rx="15" fill="#FFF3E8" stroke="#E07B2E" stroke-width="1.5"></rect><text x="850" y="326" font-family="Archivo, Helvetica Neue, sans-serif" font-size="16" fill="#16202A"><tspan font-weight="700" fill="#A84F0C">Robot</tspan>  Is this the direction?</text><rect x="889" y="343" width="206" height="30" rx="15" fill="#EAF2FB" stroke="#1F6FB8" stroke-width="1.5"></rect><text x="899" y="364" font-family="Archivo, Helvetica Neue, sans-serif" font-size="16" fill="#16202A"><tspan font-weight="700" fill="#1F6FB8">You</tspan>  No, turn more right.</text><rect x="840" y="381" width="135" height="30" rx="15" fill="#FFF3E8" stroke="#E07B2E" stroke-width="1.5"></rect><text x="850" y="402" font-family="Archivo, Helvetica Neue, sans-serif" font-size="16" fill="#16202A"><tspan font-weight="700" fill="#A84F0C">Robot</tspan>  This one?</text><rect x="1016" y="419" width="79" height="30" rx="15" fill="#EAF2FB" stroke="#1F6FB8" stroke-width="1.5"></rect><text x="1026" y="440" font-family="Archivo, Helvetica Neue, sans-serif" font-size="16" fill="#16202A"><tspan font-weight="700" fill="#1F6FB8">You</tspan>  Yes.</text><text x="10" y="325" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="17" font-weight="400" fill="#3D4852">Robot → user: it turns to show its pick, then asks.</text><text x="10" y="351" text-anchor="start" font-family="Archivo, Helvetica Neue, sans-serif" font-size="17" font-weight="400" fill="#3D4852">User → robot: yes, a correction, new words, or a new point.</text></svg></div>
+      <p class="hint">Scroll sideways to see the whole diagram.</p>
+    </figure>
+    <table class="replies">
+      <thead><tr><th scope="col">You say</th><th scope="col">The robot</th></tr></thead>
+      <tbody>
+        <tr><td>“Yes.”</td><td>Moves to Executing: walks to the target and stops in front of it.</td></tr>
+        <tr><td>“No, turn more right.” or “…more left.”</td><td>Applies a heading correction <i class="m">Δψ</i> in that direction, turns, and asks again.</td></tr>
+        <tr><td>A new instruction, such as “No, the box by the door.”</td><td>Goes back to Interpreted and grounds again with the new words and the stored ray.</td></tr>
+        <tr><td>You point again</td><td>Goes back to Perceived: a new ray is anchored and the old one is dropped.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="sec" id="data" aria-labelledby="h-data">
+  <h2 id="h-data">Data collection</h2>
+  <div class="body">
+    <p>We collect in two places: a lab with the real robot, and a Gazebo simulation with HuNavSim pedestrians, where latency sweeps are repeatable.</p>
+    <div class="data">
+      <figure><svg width="600" height="260" viewBox="0 0 600 260" role="img" aria-label="Lab data-collection setup: user pointing at boxes on a table while the Unitree Go2 with RGB-D camera records" class="ill"><g transform="translate(0 -28)"><rect x="0" y="0" width="600" height="190" fill="#EEF1F4"></rect><rect x="0" y="190" width="600" height="110" fill="#DFE3E8"></rect><line x1="0" y1="190" x2="600" y2="190" stroke="#C3CAD2" stroke-width="2"></line><rect x="150" y="34" width="150" height="74" rx="3" fill="#FFFFFF" stroke="#C3CAD2" stroke-width="2"></rect><rect x="470" y="28" width="96" height="70" fill="#DCE9F6" stroke="#C3CAD2" stroke-width="2"></rect><line x1="518" y1="28" x2="518" y2="98" stroke="#C3CAD2" stroke-width="2"></line><line x1="470" y1="63" x2="566" y2="63" stroke="#C3CAD2" stroke-width="2"></line><rect x="440" y="175" width="150" height="10" rx="2" fill="#B98E5E"></rect><rect x="448" y="185" width="8" height="78" fill="#9C7449"></rect><rect x="574" y="185" width="8" height="78" fill="#9C7449"></rect><rect x="452" y="145" width="30" height="30" rx="2" fill="#9DB4C8" stroke="#5E7487" stroke-width="1.5"></rect><rect x="500" y="135" width="36" height="40" rx="2" fill="#D9B07A" stroke="#8C6A3C" stroke-width="1.5"></rect><rect x="552" y="150" width="28" height="25" rx="2" fill="#C9CED4" stroke="#7D858E" stroke-width="1.5"></rect><line x1="176" y1="102" x2="512" y2="150" stroke="#1F6FB8" stroke-width="3" stroke-dasharray="9 7"></line><g transform="translate(95 280) scale(1.0 1.0)"><rect x="-11" y="-92" width="10" height="88" rx="3" fill="#2F3640"></rect><rect x="2" y="-92" width="10" height="88" rx="3" fill="#2F3640"></rect><rect x="-14" y="-6" width="14" height="6" rx="2" fill="#1C1F24"></rect><rect x="1" y="-6" width="15" height="6" rx="2" fill="#1C1F24"></rect><path d="M -10 -160 L -14 -102" stroke="#34495E" stroke-width="9" stroke-linecap="round" fill="none"></path><rect x="-15" y="-170" width="30" height="82" rx="10" fill="#3E5873"></rect><rect x="-4" y="-179" width="8" height="10" fill="#E0B48C"></rect><circle cx="0" cy="-192" r="15" fill="#E0B48C"></circle><path d="M -15 -192 A 15 15 0 0 1 15 -192 Q 0 -201 -15 -192 Z" fill="#2B2B2B"></path><path d="M 8 -160 L 70 -176" stroke="#3E5873" stroke-width="10" stroke-linecap="round" fill="none"></path><circle cx="74" cy="-177" r="5.5" fill="#E0B48C"></circle></g><g transform="translate(355 278) scale(-1.05 1.05)"><path d="M 46 -58 L 32 -30 L 48 -2" stroke="#9AA1A9" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><path d="M -32 -58 L -46 -30 L -30 -2" stroke="#9AA1A9" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><rect x="-55" y="-82" width="110" height="34" rx="12" fill="#D5D9DE" stroke="#3A3F45" stroke-width="2"></rect><rect x="-30" y="-94" width="40" height="12" rx="3" fill="#5B636B"></rect><rect x="22" y="-100" width="20" height="18" rx="4" fill="#23272B"></rect><rect x="22" y="-93" width="20" height="3" fill="#6C757D"></rect><rect x="45" y="-88" width="30" height="32" rx="8" fill="#3A3F45"></rect><circle cx="73" cy="-72" r="5" fill="#0E1114" stroke="#9AA3AD" stroke-width="1.5"></circle><path d="M 35 -60 L 20 -32 L 36 -3" stroke="#3A3F45" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="35" cy="-60" r="7" fill="#3A3F45"></circle><circle cx="36" cy="-3" r="4.5" fill="#1F2226"></circle><path d="M -42 -60 L -57 -32 L -41 -3" stroke="#3A3F45" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="-42" cy="-60" r="7" fill="#3A3F45"></circle><circle cx="-41" cy="-3" r="4.5" fill="#1F2226"></circle></g><rect x="64" y="68" width="124" height="216" fill="none" stroke="#1F6FB8" stroke-width="3.5"></rect><rect x="258" y="165" width="166" height="118" fill="none" stroke="#E07B2E" stroke-width="3.5"></rect><rect x="266" y="178" width="50" height="48" fill="none" stroke="#C62828" stroke-width="3.5"></rect><rect x="444" y="128" width="144" height="52" fill="none" stroke="#2E7D32" stroke-width="3.5"></rect></g><rect x="66" y="6" width="56" height="28" fill="#FFFFFF" stroke="#1F6FB8" stroke-width="2.5"></rect><text x="75" y="26" font-family="Archivo, Helvetica Neue, sans-serif" font-size="17" font-weight="700" fill="#1F6FB8">User</text><rect x="214" y="112" width="133" height="28" fill="#FFFFFF" stroke="#C62828" stroke-width="2.5"></rect><text x="223" y="132" font-family="Archivo, Helvetica Neue, sans-serif" font-size="17" font-weight="700" fill="#C62828">RGB-D camera</text><rect x="296" y="224" width="124" height="28" fill="#FFFFFF" stroke="#E07B2E" stroke-width="2.5"></rect><text x="305" y="244" font-family="Archivo, Helvetica Neue, sans-serif" font-size="17" font-weight="700" fill="#A84F0C">Unitree Go2</text><rect x="470" y="66" width="85" height="28" fill="#FFFFFF" stroke="#2E7D32" stroke-width="2.5"></rect><text x="479" y="86" font-family="Archivo, Helvetica Neue, sans-serif" font-size="17" font-weight="700" fill="#2E7D32">Targets</text></svg><figcaption>Lab setup. Unitree Go2 with an RGB-D camera, Velodyne LiDAR and a Jetson AGX Orin; the user points from distance <i class="m">d</i>.</figcaption></figure>
+      <figure><svg width="555" height="140" viewBox="0 0 555 140" role="img" aria-label="Simulated scene in Gazebo: Go2 with front camera, a pointing user, pedestrians from HuNavSim and target objects" class="ill"><rect x="1" y="1" width="553" height="138" rx="8" fill="#EEF1F4" stroke="#59636E" stroke-width="2.5"></rect><line x1="20" y1="2" x2="20" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="42" y1="2" x2="42" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="64" y1="2" x2="64" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="86" y1="2" x2="86" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="108" y1="2" x2="108" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="130" y1="2" x2="130" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="152" y1="2" x2="152" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="174" y1="2" x2="174" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="196" y1="2" x2="196" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="218" y1="2" x2="218" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="240" y1="2" x2="240" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="262" y1="2" x2="262" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="284" y1="2" x2="284" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="306" y1="2" x2="306" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="328" y1="2" x2="328" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="350" y1="2" x2="350" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="372" y1="2" x2="372" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="394" y1="2" x2="394" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="416" y1="2" x2="416" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="438" y1="2" x2="438" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="460" y1="2" x2="460" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="482" y1="2" x2="482" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="504" y1="2" x2="504" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="526" y1="2" x2="526" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="548" y1="2" x2="548" y2="138" stroke="#DCE1E6" stroke-width="1"></line><line x1="2" y1="20" x2="553" y2="20" stroke="#DCE1E6" stroke-width="1"></line><line x1="2" y1="42" x2="553" y2="42" stroke="#DCE1E6" stroke-width="1"></line><line x1="2" y1="64" x2="553" y2="64" stroke="#DCE1E6" stroke-width="1"></line><line x1="2" y1="86" x2="553" y2="86" stroke="#DCE1E6" stroke-width="1"></line><line x1="2" y1="108" x2="553" y2="108" stroke="#DCE1E6" stroke-width="1"></line><line x1="2" y1="130" x2="553" y2="130" stroke="#DCE1E6" stroke-width="1"></line><rect x="250" y="8" width="64" height="16" rx="2" fill="#B7BEC6"></rect><rect x="20" y="10" width="16" height="44" rx="2" fill="#B7BEC6"></rect><path d="M 142 84 L 330 36 L 330 128 Z" fill="#C62828" fill-opacity="0.07" stroke="#C62828" stroke-opacity="0.45" stroke-width="1.5" stroke-dasharray="5 4"></path><g transform="translate(120 86) rotate(-2)"><rect x="-18" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="-16" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-18" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="10" y="11" width="8" height="5" rx="2" fill="#8A5A35"></rect><rect x="-20" y="-12" width="40" height="24" rx="6" fill="#F6D2B2" stroke="#C4621D" stroke-width="2"></rect><rect x="14" y="-8" width="10" height="16" rx="3" fill="#C4621D"></rect></g><line x1="316" y1="71" x2="486" y2="73" stroke="#1F6FB8" stroke-width="2.5" stroke-dasharray="7 5"></line><g transform="translate(300 62) rotate(2)"><path d="M 0 9 L 14 9" stroke="#1F6FB8" stroke-width="4" stroke-linecap="round"></path><circle cx="16" cy="9" r="3" fill="#E0B48C"></circle><ellipse cx="0" cy="0" rx="8" ry="14" fill="#9CC3E8" stroke="#1F6FB8" stroke-width="2"></ellipse><circle cx="1" cy="0" r="6.5" fill="#E0B48C" stroke="#8A6A4C" stroke-width="1.2"></circle></g><rect x="466.0" y="20.0" width="20" height="20" rx="3" fill="#DDEFD3" stroke="#2E7D32" stroke-width="2"></rect><rect x="490.0" y="64.0" width="20" height="20" rx="3" fill="#DDEFD3" stroke="#2E7D32" stroke-width="2"></rect><rect x="466.0" y="104.0" width="20" height="20" rx="3" fill="#DDEFD3" stroke="#2E7D32" stroke-width="2"></rect><defs><marker id="sa" orient="auto" markerWidth="4" markerHeight="4" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#59636E"></path></marker></defs><circle cx="214" cy="30" r="8" fill="#C9CED4" stroke="#59636E" stroke-width="1.8"></circle><line x1="224" y1="30" x2="244" y2="30" stroke="#59636E" stroke-width="2" marker-end="url(#sa)"></line><circle cx="396" cy="112" r="8" fill="#C9CED4" stroke="#59636E" stroke-width="1.8"></circle><line x1="386" y1="112" x2="366" y2="112" stroke="#59636E" stroke-width="2" marker-end="url(#sa)"></line><circle cx="60" cy="112" r="8" fill="#C9CED4" stroke="#59636E" stroke-width="1.8"></circle><line x1="60" y1="102" x2="60" y2="86" stroke="#59636E" stroke-width="2" marker-end="url(#sa)"></line><circle cx="420" cy="34" r="8" fill="#C9CED4" stroke="#59636E" stroke-width="1.8"></circle><line x1="420" y1="44" x2="420" y2="58" stroke="#59636E" stroke-width="2" marker-end="url(#sa)"></line><text x="120" y="122" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" font-weight="700" fill="#A84F0C">Go2 · CHAMP</text><text x="300" y="38" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" font-weight="700" fill="#1F6FB8">user</text><text x="214" y="56" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" fill="#3D4852">HuNavSim agents</text><text x="500" y="100" text-anchor="middle" font-family="Archivo, sans-serif" font-size="14" font-weight="700" fill="#2E7D32">targets</text></svg><figcaption>Simulation. Gazebo with the CHAMP-controlled Go2 and a front camera, HuNavSim pedestrians, and target objects.</figcaption></figure>
+    </div>
+    <div class="lists">
+      <div><h3>Logged per trial</h3><ul><li>RGB-D frames <i class="m">V</i> and speech audio <i class="m">A</i></li><li>Pose keypoints <i class="m">k</i></li><li>TF2 tree and odometry</li><li>Velodyne LiDAR scans</li><li>Ground-truth target pose</li></ul></div>
+      <div><h3>Varied across trials</h3><ul><li>User-to-target distance</li><li>Target layout</li><li>Injected latency <i class="m">τ</i> from 1 to 5 s</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="evaluation" aria-labelledby="h-eval">
+  <h2 id="h-eval">Evaluation</h2>
+  <div class="body">
+    <dl class="metrics">
+      <div><dt>Deictic heading error</dt><dd>Angle between the robot’s final heading and the true bearing of the target.</dd></div>
+      <div><dt>Instruction capture rate</dt><dd>Share of pointing instructions the hold detector catches.</dd></div>
+      <div><dt>Target selection accuracy</dt><dd>Share of trials where the robot commits to the right object.</dd></div>
+      <div><dt>Latency-conditioned degradation</dt><dd>Each metric above as injected latency <i class="m">τ</i> rises from 1 to 5 s.</dd></div>
+    </dl>
+    <p style="margin-top:24px">We compare a body-frame ray against the world-anchored ray, first in HuNavSim, then on the real Go2.</p>
+    <div class="pending">Results will be added here once the evaluation runs.</div>
+  </div>
+</section>
+
+<section class="sec" id="status" aria-labelledby="h-status">
+  <h2 id="h-status">Status</h2>
+  <div class="body">
+    <p>As of October 2026.</p>
+    <div class="status">
+      <div><h3><span class="dot" style="background:var(--green)"></span>Done</h3><ul><li>Go2 simulation in Gazebo with CHAMP and a custom front camera</li><li>Camera stream into ROS 2</li><li>First MediaPipe gesture node</li><li>VLA chosen: NaVILA</li><li>Benchmark chosen: HuNavSim</li></ul></div>
+      <div><h3><span class="dot" style="background:var(--orange)"></span>In progress</h3><ul><li>Pose-based pointing rays (four hypotheses)</li><li>Hold detector</li><li>Publishing the TF2-anchored ray</li></ul></div>
+      <div><h3><span class="dot" style="background:var(--rule)"></span>Next</h3><ul><li>Memory buffer feeding NaVILA</li><li>Grounding protocol</li><li>HuNavSim latency sweep</li><li>Runs on the real Go2 and a recorded demo</li></ul></div>
+    </div>
+    <ol class="timeline">
+      <li><time>Jun – Aug 2026</time><p>Problem definition, literature review, feasibility study</p></li>
+      <li class="now"><time>Sep – Dec 2026</time><p>Build sprints S0–S6 with four decision gates</p></li>
+      <li><time>Jan – May 2027</time><p>Evaluation, recorded demo, write-up</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="sec" id="team" aria-labelledby="h-team">
+  <h2 id="h-team">Team</h2>
+  <div class="body">
+    <ul class="team">
+      <li class="person"><span class="avatar" aria-hidden="true">PG</span><div><b>Pulitha Gunawardana</b><span>Undergraduate, ENTC</span></div></li>
+      <li class="person"><span class="avatar" aria-hidden="true">AN</span><div><b>Agra Navaratne</b><span>Undergraduate, ENTC</span></div></li>
+      <li class="person"><span class="avatar" aria-hidden="true">RF</span><div><b>Rivikula Fernando</b><span>Undergraduate, ENTC</span></div></li>
+    </ul>
+    <p class="sup"><b>Supervisors:</b> Dr. Dulanga Weerakoon and Dr. Darshana Rathnayake, Department of Electronic and Telecommunication Engineering, University of Moratuwa.</p>
+  </div>
+</section>
+
+<section class="sec" id="cite" aria-labelledby="h-cite">
+  <h2 id="h-cite">Cite</h2>
+  <div class="body cite">
+<pre id="bib">@misc{gunawardana2027deictic,
+  title  = {Closing the Deictic Loop: Bidirectional Deictic Grounding for
+            Gesture-Conditioned Vision-Language-Action Navigation on a Quadruped},
+  author = {Gunawardana, Pulitha and Navaratne, Agra and Fernando, Rivikula},
+  year   = {2027},
+  note   = {Final Year Project, Department of Electronic and Telecommunication
+            Engineering, University of Moratuwa}
+}</pre>
+    <button type="button" class="ghost" id="copyBib">Copy BibTeX</button>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="foot-in">
+    <p>Final Year Project, Group 03. Department of Electronic and Telecommunication Engineering, University of Moratuwa.</p>
+    <p>Last updated October 2026</p>
+  </div>
+</footer>
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function $(id){ return document.getElementById(id); }
+  var RAD = Math.PI/180;
+
+  /* ---------- hero demo ---------- */
+  var scene = $('scene');
+  if (scene) {
+    var robot=$('robot'), user=$('user'), arm=$('arm'), ray=$('ray'), rayTag=$('rayTag'), heading=$('heading'),
+        arc=$('arc'), arcTag=$('arcTag'), ring=$('ring'), bubble=$('bubble'), bubbleText=$('bubbleText'),
+        bubbleBox=$('bubbleBox'), flash=$('flash'), log=$('log'), controls=$('controls'), mistake=$('mistake');
+    var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('.tbox'));
+    var BOX = [{x:540,y:100,n:'top'},{x:580,y:190,n:'middle'},{x:540,y:280,n:'bottom'}];
+    var U = {x:110,y:190}, R0 = {x:300,y:286,a:-150};
+    var Rb = {x:R0.x,y:R0.y,a:R0.a}, target=null, pick=null, busy=false, run=0, done=false;
+    var ORDER = ['perceived','interpreted','committed','executing'];
+
+    function ang(p,q){ return Math.atan2(q.y-p.y,q.x-p.x)/RAD; }
+    function setRobot(){ robot.setAttribute('transform','translate('+Rb.x.toFixed(1)+' '+Rb.y.toFixed(1)+') rotate('+Rb.a.toFixed(2)+')'); }
+    function show(el,on,op){ el.setAttribute('opacity', on ? (op||1) : 0); }
+    function tween(ms,f){
+      return new Promise(function(res){
+        if (reduce || !ms){ f(1); res(); return; }
+        var t0 = performance.now();
+        function step(now){
+          var t = Math.min(1,(now-t0)/ms), e = t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+          f(e); if (t<1) requestAnimationFrame(step); else res();
+        }
+        requestAnimationFrame(step);
+      });
+    }
+    function wait(ms){ return new Promise(function(r){ setTimeout(r, reduce ? Math.min(ms,120) : ms); }); }
+    function say(who,text){
+      var li = document.createElement('li'); li.className = who;
+      li.innerHTML = who==='sys' ? text : '<b>'+(who==='you'?'You':'Robot')+':</b> '+text;
+      log.appendChild(li);
+      while (log.children.length > 5) log.removeChild(log.firstChild);
+    }
+    function phase(p){
+      var i = ORDER.indexOf(p);
+      chips.forEach(function(c,k){ c.classList.toggle('on',k===i); c.classList.toggle('done', i>=0 && k<i); });
+    }
+    function allDone(){ chips.forEach(function(c){ c.classList.remove('on'); c.classList.add('done'); }); }
+    function setControls(list, hint){
+      controls.innerHTML = '';
+      if (hint){ var p=document.createElement('p'); p.textContent=hint; controls.appendChild(p); }
+      (list||[]).forEach(function(b){
+        var el=document.createElement('button'); el.type='button'; el.className='reply '+(b[1]||''); el.textContent=b[0];
+        el.addEventListener('click', b[2]); controls.appendChild(el);
+      });
+    }
+    function say_bubble(txt){
+      if (!txt){ show(bubble,false); return; }
+      bubbleText.textContent = txt;
+      var w = Math.max(110, txt.length*8.2+28);
+      bubbleBox.setAttribute('width', w.toFixed(0)); bubbleBox.setAttribute('x', (300-w/2).toFixed(0));
+      show(bubble,true);
+    }
+    function front(){ var a=Rb.a*RAD; return {x:Rb.x+36*Math.cos(a), y:Rb.y+36*Math.sin(a)}; }
+    function drawHeading(k){
+      var f = front(), b = BOX[k], a = Math.atan2(b.y-f.y,b.x-f.x);
+      heading.setAttribute('x1',f.x.toFixed(1)); heading.setAttribute('y1',f.y.toFixed(1));
+      heading.setAttribute('x2',(b.x-26*Math.cos(a)).toFixed(1)); heading.setAttribute('y2',(b.y-26*Math.sin(a)).toFixed(1));
+      show(heading,true);
+    }
+    function clearMarks(){ boxes.forEach(function(b){ b.classList.remove('pick','reached'); }); }
+    function turnTo(a,ms){
+      var a0 = Rb.a, d = ((a-a0+540)%360)-180;
+      return tween(ms||750, function(e){ Rb.a = a0+d*e; setRobot(); }).then(function(){ Rb.a = a0+d; setRobot(); });
+    }
+    function clearScene(){
+      [ray,rayTag,heading,arc,arcTag,ring,arm].forEach(function(el){ show(el,false); });
+      say_bubble(null); robot.classList.remove('think'); clearMarks();
+    }
+    function intro(){
+      log.innerHTML=''; say('sys','Click a box to point at it. The robot only sees the point while you hold it.');
+      setControls([], 'Waiting for you to point.');
+    }
+    function reset(){
+      run++; busy=false; done=false; target=pick=null;
+      Rb = {x:R0.x,y:R0.y,a:R0.a}; setRobot(); clearScene(); phase(null); intro();
+    }
+    function repoint(){
+      run++; busy=false; clearScene(); phase(null);
+      say('you','Let me point again.'); setControls([], 'Click a box to point at it.');
+    }
+
+    async function pointAt(k){
+      if (busy) return;
+      if (done){ Rb = {x:R0.x,y:R0.y,a:R0.a}; setRobot(); done=false; }
+      var my = ++run; busy = true; target = k; clearScene(); phase(null); setControls([], 'Hold the point…');
+      var ua = ang(U, BOX[k]);
+      user.setAttribute('transform','translate('+U.x+' '+U.y+') rotate('+ua.toFixed(2)+')');
+      var r = ua*RAD, hx = U.x+37*Math.cos(r)-13*Math.sin(r), hy = U.y+37*Math.sin(r)+13*Math.cos(r);
+      var ba = Math.atan2(BOX[k].y-hy, BOX[k].x-hx);
+      ray.setAttribute('x1',hx.toFixed(1)); ray.setAttribute('y1',hy.toFixed(1));
+      ray.setAttribute('x2',(BOX[k].x-24*Math.cos(ba)).toFixed(1)); ray.setAttribute('y2',(BOX[k].y-24*Math.sin(ba)).toFixed(1));
+      rayTag.setAttribute('x',(hx+40).toFixed(0)); rayTag.setAttribute('y',(hy-10+40*Math.tan(ba)).toFixed(0));
+      show(arm,true); show(ray,true); show(ring,true);
+      say('you','Go to that box. <span class="sys">(pointing at the '+BOX[k].n+' box)</span>');
+      var C = 213.6;
+      await tween(1200, function(e){ ring.setAttribute('stroke-dashoffset',(C*(1-e)).toFixed(1)); });
+      if (my!==run) return;
+      show(ring,false); ring.setAttribute('stroke-dashoffset',C);
+      phase('perceived');
+      await tween(400, function(e){ flash.setAttribute('opacity', (1-e).toFixed(2)); });
+      say('sys','Perceived: hold detected, pointing frame saved, ray anchored in the world frame.');
+      await wait(500); if (my!==run) return;
+      show(arm,false); show(ray,true,0.6); show(rayTag,true);
+      say('sys','Your arm is down. The anchored ray is still there.');
+      await wait(700); if (my!==run) return;
+      phase('interpreted'); robot.classList.add('think');
+      say('sys','Interpreted: NaVILA reads the live frame with the ray drawn in.');
+      await wait(1200); if (my!==run) return;
+      robot.classList.remove('think');
+      pick = mistake.checked ? (k===0 ? 1 : k-1) : k;
+      await commit(my, true);
+    }
+
+    async function commit(my, first){
+      phase('committed'); show(heading,false); clearMarks();
+      await turnTo(ang(Rb, BOX[pick]));
+      if (my!==run) return;
+      boxes[pick].classList.add('pick'); drawHeading(pick);
+      var q = first ? 'Is this the direction?' : 'This one?';
+      say_bubble(q); say('bot', q);
+      busy = false;
+      setControls([['Yes','yes',confirm],['No, turn more right','no',function(){correct(1);}],
+                   ['No, turn more left','no',function(){correct(-1);}],['Point again','',repoint]]);
+    }
+
+    async function correct(dir){
+      if (busy) return; busy = true; var my = run;
+      say('you', dir>0 ? 'No, turn more right.' : 'No, turn more left.');
+      setControls([]);
+      var np = pick + dir;
+      if (np<0 || np>2){
+        say('bot','Nothing further '+(dir>0?'right':'left')+' matches. Can you point again?');
+        say_bubble('Can you point again?'); busy=false;
+        setControls([['Point again','',repoint],['Yes, this one','yes',confirm]]); return;
+      }
+      var a0 = Rb.a, a1 = ang(Rb, BOX[np]), rr = 62;
+      var p0 = {x:Rb.x+rr*Math.cos(a0*RAD), y:Rb.y+rr*Math.sin(a0*RAD)}, p1 = {x:Rb.x+rr*Math.cos(a1*RAD), y:Rb.y+rr*Math.sin(a1*RAD)};
+      arc.setAttribute('d','M '+p0.x.toFixed(1)+' '+p0.y.toFixed(1)+' A '+rr+' '+rr+' 0 0 '+(a1>a0?1:0)+' '+p1.x.toFixed(1)+' '+p1.y.toFixed(1));
+      var am = (a0+a1)/2*RAD;
+      arcTag.setAttribute('x',(Rb.x+86*Math.cos(am)).toFixed(0)); arcTag.setAttribute('y',(Rb.y+86*Math.sin(am)+6).toFixed(0));
+      show(arc,true); show(arcTag,true); say_bubble(null);
+      say('sys','Correct: heading adjusted by Δψ, then ask again.');
+      pick = np;
+      await commit(my, false);
+      show(arc,false); show(arcTag,false);
+    }
+
+    async function confirm(){
+      if (busy) return; busy = true; var my = run;
+      say('you','Yes.'); setControls([]); phase('executing'); show(heading,false); say_bubble(null);
+      var b = BOX[pick], a = ang(Rb,b), dist = Math.hypot(b.x-Rb.x, b.y-Rb.y)-72, x0 = Rb.x, y0 = Rb.y;
+      say('bot','Going.');
+      await tween(Math.max(1000, dist*5), function(e){ Rb.x = x0+Math.cos(a*RAD)*dist*e; Rb.y = y0+Math.sin(a*RAD)*dist*e; setRobot(); });
+      if (my!==run) return;
+      boxes[pick].classList.remove('pick'); boxes[pick].classList.add('reached'); allDone(); show(ray,false); show(rayTag,false);
+      say('bot','Arrived.');
+      if (pick!==target) say('sys','You confirmed a different box from the one you pointed at, so that is where it went.');
+      done = true; busy = false;
+      setControls([['Start over','',reset]], 'Or click any box to point again.');
+    }
+
+    boxes.forEach(function(b){
+      var k = +b.getAttribute('data-k');
+      b.addEventListener('click', function(){ if (!busy) pointAt(k); });
+      b.addEventListener('keydown', function(e){ if (e.key==='Enter' || e.key===' '){ e.preventDefault(); if (!busy) pointAt(k); } });
+    });
+    $('demoReset').addEventListener('click', reset);
+    reset();
+  }
+
+  /* ---------- error-geometry figure ---------- */
+  var geo = $('geo');
+  if (geo) {
+    var th=$('dth'), dd=$('dist'), oth=$('dthOut'), od=$('distOut'), oe=$('missOut'), oe2=$('missOut2');
+    var O = {x:60,y:200}, A0 = -15, S = 44;
+    function P(a,len){ return {x:O.x+len*Math.cos(a*RAD), y:O.y+len*Math.sin(a*RAD)}; }
+    function arcD(c,r,a,b){
+      var p=P2(c,r,a), q=P2(c,r,b);
+      return 'M '+p.x.toFixed(1)+' '+p.y.toFixed(1)+' A '+r+' '+r+' 0 0 1 '+q.x.toFixed(1)+' '+q.y.toFixed(1);
+    }
+    function P2(c,r,a){ return {x:c.x+r*Math.cos(a*RAD), y:c.y+r*Math.sin(a*RAD)}; }
+    function upd(){
+      var t = +th.value, d = +dd.value, L = d*S;
+      var Tg = P(A0,L), Tt = P(A0,L-15), W = P(A0+t,L);
+      $('gT').setAttribute('x',(Tg.x-13).toFixed(1)); $('gT').setAttribute('y',(Tg.y-13).toFixed(1));
+      $('gTl').setAttribute('x',Tg.x.toFixed(1)); $('gTl').setAttribute('y',(Tg.y-20).toFixed(1));
+      $('gTrue').setAttribute('x2',Tt.x.toFixed(1)); $('gTrue').setAttribute('y2',Tt.y.toFixed(1));
+      $('gWrong').setAttribute('x2',W.x.toFixed(1)); $('gWrong').setAttribute('y2',W.y.toFixed(1));
+      $('gMiss').setAttribute('x1',Tg.x.toFixed(1)); $('gMiss').setAttribute('y1',(Tg.y+13).toFixed(1));
+      $('gMiss').setAttribute('x2',W.x.toFixed(1)); $('gMiss').setAttribute('y2',W.y.toFixed(1));
+      $('gE').setAttribute('x',((Tg.x+W.x)/2+12).toFixed(1)); $('gE').setAttribute('y',((Tg.y+W.y)/2+6).toFixed(1));
+      $('gE').setAttribute('opacity', t>2 ? 1 : 0);
+      $('gArc').setAttribute('d', t>0.5 ? arcD(O,64,A0,A0+t) : '');
+      var lab = P2(O,84,A0+t/2); $('gTh').setAttribute('x',lab.x.toFixed(1)); $('gTh').setAttribute('y',(lab.y+7).toFixed(1));
+      $('gTh').setAttribute('opacity', t>3 ? 1 : 0);
+      var mid = P(A0,L/2); $('gD').setAttribute('x',(mid.x-6).toFixed(1)); $('gD').setAttribute('y',(mid.y-12).toFixed(1));
+      var RC = {x:200,y:292};
+      $('gRob').setAttribute('transform','translate(200 292) rotate('+(-100+t).toFixed(2)+')');
+      $('gRarc').setAttribute('d', t>1 ? arcD(RC,50,-100,-100+t) : '');
+      var rl = P2(RC,68,-100+t/2); $('gRth').setAttribute('x',rl.x.toFixed(1)); $('gRth').setAttribute('y',(rl.y+6).toFixed(1));
+      $('gRth').setAttribute('opacity', t>4 ? 1 : 0);
+      var e = d*Math.tan(t*RAD);
+      oth.textContent = t.toFixed(1)+'°'; od.textContent = d.toFixed(1)+' m';
+      oe.textContent = e.toFixed(2)+' m'; oe2.textContent = '0 m';
+    }
+    th.addEventListener('input',upd); dd.addEventListener('input',upd);
+    $('preset').addEventListener('click',function(){ th.value=14.4; dd.value=5; upd(); });
+    upd();
+  }
+
+  /* ---------- copy citation ---------- */
+  var cb = $('copyBib');
+  if (cb) cb.addEventListener('click', function(){
+    var txt = $('bib').textContent;
+    var ok = function(){ cb.textContent='Copied'; setTimeout(function(){ cb.textContent='Copy BibTeX'; },1600); };
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(ok, function(){ cb.textContent='Select the text to copy'; });
+    else cb.textContent='Select the text to copy';
+  });
+})();
+</script>
+</body>
+</html>
