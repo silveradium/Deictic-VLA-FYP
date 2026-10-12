@@ -25,7 +25,7 @@ cmd:  # velocity chain: twist_mux picks the highest-priority live input
   joy:               {type: sensor_msgs/msg/Joy,     qos: reliable, from: joy_node}
 
 navila:  # infer mode
-  navila/instruction: {type: std_msgs/msg/String, qos: reliable, from: make instruct / audio_stt, note: '"stop" ends the episode'}
+  navila/instruction: {type: std_msgs/msg/String, qos: reliable, from: make instruct / wake_router (audio_stt), note: '"stop" ends the episode'}
   navila/decision:    {type: std_msgs/msg/String, qos: reliable, from: navila_node, note: NaVILA's raw text per decision}
 
 camera:  # Orbbec Gemini 335 on the Pi (robot/pi/deictic_pi). Raw frames never leave the Pi: only the JPEG stream crosses Wi-Fi
@@ -34,5 +34,9 @@ camera:  # Orbbec Gemini 335 on the Pi (robot/pi/deictic_pi). Raw frames never l
   orbbec/color/camera_info:          {type: sensor_msgs/msg/CameraInfo,      qos: reliable, from: Pi orbbec_camera}
   orbbec/color/image_decoded:        {type: sensor_msgs/msg/Image,           qos: reliable, from: orbbec_decode (bringup), note: 'raw copy on the bringup machine, for NaVILA (NAVILA_CAMERA_TOPIC)'}
   orbbec/depth/image_raw:            {type: sensor_msgs/msg/Image,           qos: reliable, from: Pi orbbec_camera, note: 'only with enable_depth:=true, which needs a 5 A supply (robot/pi/README.md)'}
+
+stt:  # mic speech-to-text on the bringup machine (audio_stt). Wake phrase: "Hey Roxy"
+  stt/transcript: {type: std_msgs/msg/String, qos: reliable, from: stt_node, note: every finished sentence the mic hears}
+  stt/request:    {type: std_msgs/msg/String, qos: reliable, from: wake_router, note: 'what was said after "Hey Roxy"; empty = the wake phrase alone'}
 
 # episode: recorder start/stop markers. Added in build step 4 (deictic_interfaces).
