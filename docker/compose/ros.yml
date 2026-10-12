@@ -27,8 +27,14 @@ services:
     volumes:
       - ./configs:/deictic/configs:ro
       - /dev/input:/dev/input  # joystick, mounted (not passed as a device) so hot-plug works
+      - /dev/snd:/dev/snd      # mic for audio_stt, mounted for the same reason
       - /run/udev:/run/udev:ro
+      - stt_models:/root/.cache/moonshine_voice  # Moonshine model, downloaded on the first start
     device_cgroup_rules:
       - "c 13:* rmw"  # input devices
+      - "c 116:* rmw"  # sound devices (ALSA)
     command: ros2 launch deictic_bringup bringup.launch.py mode:=collect
     stop_signal: SIGINT  # lets ros2 launch shut the nodes down cleanly
+
+volumes:
+  stt_models:  # Moonshine STT model, kept when the container is re-created

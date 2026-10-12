@@ -48,6 +48,10 @@ COPY --from=navila navila_go2/__init__.py /opt/navila/navila_go2/__init__.py
 COPY --from=navila navila_go2/common /opt/navila/navila_go2/common
 ENV PYTHONPATH=/opt/navila
 
+# Mic speech-to-text for audio_stt (Moonshine, CPU; portaudio comes from apt above). numpy stays
+# on 1.x, which ROS Humble's compiled Python modules and go2's requirements both need.
+RUN pip3 install "numpy<2" moonshine-voice
+
 # --- our packages overlay ---
 WORKDIR /ros2_ws
 COPY ros_ws/src src
