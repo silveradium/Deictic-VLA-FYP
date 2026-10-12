@@ -9,7 +9,8 @@
   - Processes on this machine (incl. containers on the host network) find each other through
     the localhost peer. Other machines are listed as peers from .env: PI_IP (the Pi, for the
     bringup machine) and BRIDGE_IP (the bringup machine, for the Pi). Unset peers fall back to
-    localhost.
+    localhost. k3s's firewall drops traffic to localhost from the machine's own IP, so on the
+    workstation BRIDGE_IP (its own address) is what lets its processes find each other.
   - DDS_IFACE is the only interface, without lo: with lo in the list, Cyclone 0.10 sends
     discovery to other machines through the loopback socket, which Linux refuses
     ("ddsi_udp_conn_write ... failed with retcode -3"), so the machines never meet. Local

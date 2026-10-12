@@ -20,6 +20,7 @@ services:
       CYCLONEDDS_URI: file:///deictic/configs/cyclonedds.xml
       DDS_IFACE: ${DDS_IFACE:-}  # required at run time, checked by the entrypoint
       PI_IP: ${PI_IP:-}  # unicast DDS peer
+      BRIDGE_IP: ${BRIDGE_IP:-}  # this machine's own IP: local discovery where localhost is firewalled (k3s)
       ROBOT_IP: ${GO2_IP:-}
       ROBOT_AES_KEY: ${GO2_AES_KEY:-}
       CONN_TYPE: ${GO2_CONN_TYPE:-webrtc}
