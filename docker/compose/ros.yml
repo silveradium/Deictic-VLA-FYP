@@ -24,6 +24,7 @@ services:
       ROBOT_AES_KEY: ${GO2_AES_KEY:-}
       CONN_TYPE: ${GO2_CONN_TYPE:-webrtc}
       NAVILA_SERVER_URL: ${NAVILA_SERVER_URL:-http://127.0.0.1:8000}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}  # voice:=true (dialog_node)
     volumes:
       - ./configs:/deictic/configs:ro
       - /dev/input:/dev/input  # joystick, mounted (not passed as a device) so hot-plug works

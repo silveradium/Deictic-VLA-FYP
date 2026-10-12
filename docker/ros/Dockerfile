@@ -52,6 +52,13 @@ ENV PYTHONPATH=/opt/navila
 # on 1.x, which ROS Humble's compiled Python modules and go2's requirements both need.
 RUN pip3 install "numpy<2" moonshine-voice
 
+# Spoken replies for voice: Gemini client, Piper TTS (+ the voice, baked in) and sox for the
+# voice effects. Same numpy pin.
+RUN apt-get update && apt-get install -y --no-install-recommends sox \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install "numpy<2" piper-tts google-genai \
+    && python3 -m piper.download_voices --data-dir /opt/piper-voices en_US-ryan-medium
+
 # --- our packages overlay ---
 WORKDIR /ros2_ws
 COPY ros_ws/src src
