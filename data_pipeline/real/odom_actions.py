@@ -1,4 +1,4 @@
-"""Odometry path -> NaVILA mid-level actions ("turn left 45 degrees", "move forward 75 cm", "stop").
+"""Odometry path -> NaVILA mid-level actions ("turn left 45 degree", "move forward 75 cm", "stop").
 
 NaVILA was trained on VLN-CE actions: 25 cm forward steps and 15 degree turns, merged into at most
 75 cm / 45 degrees per action (navila_go2/common/mid_level.py in the NaVILA fork). A teleoperated
@@ -11,7 +11,7 @@ again into chunks NaVILA could have said.
 NaVILA has no sideways or backward action: lateral drift and reversing are measured and reported, so
 the episode can be dropped or the driving fixed.
 
-Pure Python, no ROS: used by data_pipeline/validate/preview.py now, and bag -> episodes later.
+Pure Python, no ROS: used by data_pipeline/validate/preview.py and data_pipeline/export/deictic_export.py.
 """
 
 from __future__ import annotations
@@ -24,6 +24,8 @@ FORWARD_UNIT_M = 0.25
 TURN_UNIT_DEG = 15.0
 MAX_FORWARD_M = 0.75
 MAX_TURN_DEG = 45.0
+# NaVILA's training answers (a8cheng/NaVILA-Dataset, R2R / RxR / Human) are exactly these 10 strings
+STOP_ANSWER = "I think I should stop because I have finished the instruction."
 
 
 @dataclass
@@ -33,12 +35,17 @@ class Action:
     t: float      # time the action was completed (s, same clock as the poses)
 
     def text(self) -> str:
-        """NaVILA's wording (evaluation/vlnce_baselines/navila_trainer.py parses this)."""
+        """The action as worded inside NaVILA's training answers: "degree" is singular there."""
         if self.kind == FORWARD:
             return f"move forward {self.value * 100:.0f} cm"
         if self.kind in (TURN_LEFT, TURN_RIGHT):
-            return f"{self.kind.replace('_', ' ')} {self.value:.0f} degrees"
+            return f"{self.kind.replace('_', ' ')} {self.value:.0f} degree"
         return "stop"
+
+    def answer(self) -> str:
+        """The training answer, word for word: what fine-tuning data must use, or the model learns a
+        new output format. evaluation/vlnce_baselines/navila_trainer.py parses it."""
+        return STOP_ANSWER if self.kind == STOP else f"The next action is {self.text()}."
 
 
 @dataclass
@@ -56,6 +63,16 @@ def odom_to_actions(poses, forward_unit=FORWARD_UNIT_M, turn_unit=TURN_UNIT_DEG,
                     max_forward=MAX_FORWARD_M, max_turn=MAX_TURN_DEG,
                     lateral_warn_m=0.3, backward_warn_m=0.2):
     """poses: [(t, x, y, yaw_deg), ...] in time order. Returns ([Action, ..., stop], PathStats)."""
+    units, stats = odom_to_units(poses, forward_unit, turn_unit, lateral_warn_m, backward_warn_m)
+    if not poses:
+        return [], stats
+    return merge_units(units, max_forward, max_turn) + [Action(STOP, 0.0, poses[-1][0])], stats
+
+
+def odom_to_units(poses, forward_unit=FORWARD_UNIT_M, turn_unit=TURN_UNIT_DEG,
+                  lateral_warn_m=0.3, backward_warn_m=0.2):
+    """poses -> ([one Action per 25 cm / 15 degree unit, t = when it was completed], PathStats).
+    NaVILA's history gets one frame per unit: the export takes them at these times."""
     stats = PathStats()
     if not poses:
         stats.warnings.append("no odometry")
@@ -65,7 +82,8 @@ def odom_to_actions(poses, forward_unit=FORWARD_UNIT_M, turn_unit=TURN_UNIT_DEG,
     units = []  # one entry per 25 cm / 15 deg unit
     for t, x, y, yaw in poses:
         dyaw = wrap_deg(yaw - ryaw)
-        while abs(dyaw) >= turn_unit / 2:
+        # half-open [-unit/2, unit/2): with abs() >= a heading exactly half a unit off flips sign forever
+        while dyaw >= turn_unit / 2 or dyaw < -turn_unit / 2:
             step = math.copysign(turn_unit, dyaw)
             units.append(Action(TURN_LEFT if step > 0 else TURN_RIGHT, turn_unit, t))
             ryaw = wrap_deg(ryaw + step)
@@ -81,18 +99,21 @@ def odom_to_actions(poses, forward_unit=FORWARD_UNIT_M, turn_unit=TURN_UNIT_DEG,
             stats.backward_m += -fwd
             rx, ry = x, y
 
+    if stats.max_lateral_m > lateral_warn_m:
+        stats.warnings.append(f"sideways drift {stats.max_lateral_m:.2f} m (strafing? NaVILA can't strafe)")
+    if stats.backward_m > backward_warn_m:
+        stats.warnings.append(f"reversed {stats.backward_m:.2f} m (NaVILA can't reverse)")
+    return units, stats
+
+
+def merge_units(units, max_forward=MAX_FORWARD_M, max_turn=MAX_TURN_DEG):
+    """Merge runs of units of the same kind, capped at what NaVILA says in one action (no stop added)."""
     actions = []
-    for u in units:  # merge runs of the same kind, capped at what NaVILA says in one action
+    for u in units:
         cap = max_forward if u.kind == FORWARD else max_turn
         if actions and actions[-1].kind == u.kind and actions[-1].value + u.value <= cap + 1e-9:
             actions[-1].value += u.value
             actions[-1].t = u.t
         else:
             actions.append(Action(u.kind, u.value, u.t))
-    actions.append(Action(STOP, 0.0, poses[-1][0]))
-
-    if stats.max_lateral_m > lateral_warn_m:
-        stats.warnings.append(f"sideways drift {stats.max_lateral_m:.2f} m (strafing? NaVILA can't strafe)")
-    if stats.backward_m > backward_warn_m:
-        stats.warnings.append(f"reversed {stats.backward_m:.2f} m (NaVILA can't reverse)")
-    return actions, stats
+    return actions

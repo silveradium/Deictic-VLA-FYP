@@ -20,6 +20,12 @@ navila_node:
     max_ang: 0.8            # rad/s
     # Go2 front camera is 16:9; NaVILA squares every frame (crop = center square, squash = full FOV)
     image_mode: crop
+    # Pointing frames at the front of NaVILA's history when an instruction arrives: the frames nearest
+    # gesture_frames times over the gesture_window_s s before it (0 = off). Training data is exported
+    # with these same values and image_mode (data_pipeline/real/navila_input.py): change them together
+    # with a re-export and re-train. Untuned: make preview shows what they pick.
+    gesture_frames: 4
+    gesture_window_s: 3.0   # s
 
 # Mic speech-to-text (ros_ws/src/audio_stt), on the machine the DJI Mic Mini is plugged into
 stt_node:

@@ -6,9 +6,11 @@
 Runs in the ROS image (rosbag2_py). For every episode (ep_*/ and discarded/ep_*/) it reads the bag
 and episode.json, prints a summary, and writes <session>/preview/:
   index.html     per episode: the instruction, a video of the Orbbec frames, thumbnails (listening /
-                 driving), the odometry path from above, the NaVILA action labels derived from it
-                 (data_pipeline/real/odom_actions.py), and every topic in the bag with its rate and
-                 a sample message, so you can see exactly what is saved
+                 driving), what NaVILA's first decision sees (pointing frames + current frame,
+                 data_pipeline/real/navila_input.py), the odometry path from above, the NaVILA
+                 action labels derived from it (data_pipeline/real/odom_actions.py), and every topic
+                 in the bag with its rate and a sample message, so you can see exactly what is saved.
+                 Every image has a dashed box: the part NaVILA keeps (image_mode crop)
   ep_001.mp4     the episode's frames (needs ffmpeg, which the ROS image has)
   ep_001_*.jpg   thumbnails, the recorded JPEGs as they are
 
@@ -31,6 +33,7 @@ from rosidl_runtime_py import message_to_yaml
 from rosidl_runtime_py.utilities import get_message
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from data_pipeline.real.navila_input import crop_box, load_params, pick_gesture  # noqa: E402
 from data_pipeline.real.odom_actions import odom_to_actions  # noqa: E402
 
 CAMERA = "/orbbec/color/image_raw/compressed"
@@ -64,6 +67,20 @@ def read_episode(bag_dir: Path):
         elif topic == EVENT:
             events.append(json.loads(deserialize_message(data, get_message(types[topic])).data))
     return types, stamps, samples, frames, odom, events
+
+
+def jpeg_size(data: bytes):
+    """(width, height) from a JPEG's frame header, None if there is none."""
+    i = 2
+    while i + 9 <= len(data) and data[i] == 0xFF:
+        marker = data[i + 1]
+        if marker == 0xFF or 0xD0 <= marker <= 0xD9 or marker == 0x01:  # fill byte, markers without length
+            i += 1 if marker == 0xFF else 2
+            continue
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):  # SOFn: length, precision, h, w
+            return int.from_bytes(data[i + 7:i + 9], "big"), int.from_bytes(data[i + 5:i + 7], "big")
+        i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
+    return None
 
 
 def sample_yaml(topic, type_name, data, max_lines=18):
@@ -123,7 +140,7 @@ def path_svg(odom, size=260, pad=18):
             f'<circle cx="{ex:.1f}" cy="{ey:.1f}" r="5" class="end"/></svg>')
 
 
-def analyse(ep_dir: Path, out: Path, discarded: bool):
+def analyse(ep_dir: Path, out: Path, discarded: bool, params: dict):
     name = ep_dir.name
     meta = {}
     if (ep_dir / "episode.json").exists():
@@ -157,6 +174,22 @@ def analyse(ep_dir: Path, out: Path, discarded: bool):
             fname = f"{name}_{i:04d}.jpg"
             (out / fname).write_bytes(jpeg)
             thumbs.append((fname, t - t_listen, "listening" if t < t_go else "driving"))
+    # what NaVILA's first decision sees: the pointing frames, then the frame at t_go
+    first_input, crop = [], None
+    if frames:
+        size = jpeg_size(frames[0][1])
+        crop = crop_box(*size, params["image_mode"]) if size else None
+        times = [t for t, _ in frames]
+        n = params["gesture_frames"]
+        pointing = pick_gesture(times, t_go, params["gesture_window_s"], n)
+        current = min(range(len(frames)), key=lambda i: abs(times[i] - t_go))
+        for k, i in enumerate(pointing + [current]):
+            fname = f"{name}_in{k}_{i:04d}.jpg"
+            (out / fname).write_bytes(frames[i][1])
+            first_input.append((fname, times[i] - t_listen, "pointing" if k < len(pointing) else "current"))
+        if len(pointing) < n:
+            problems.append(f"{len(pointing)} of {n} pointing frames: point for {params['gesture_window_s']:.0f} s "
+                            "before the second Enter (or a camera gap)")
     video = f"{name}.mp4" if write_video(frames, out / f"{name}.mp4") else None
 
     topics = []
@@ -172,7 +205,7 @@ def analyse(ep_dir: Path, out: Path, discarded: bool):
             "duration": t_end - t_listen, "listen": t_go - t_listen, "drive": t_end - t_go,
             "frames": len(frames), "fps": fps, "cam_gap": cam_gap, "odom_n": len(odom),
             "odom_hz": odom_hz, "actions": actions, "problems": problems, "thumbs": thumbs,
-            "video": video, "svg": path_svg(odom), "topics": topics}
+            "first_input": first_input, "crop": crop, "video": video, "svg": path_svg(odom), "topics": topics}
 
 
 def print_summary(eps):
@@ -185,6 +218,8 @@ def print_summary(eps):
                   f"{e['frames']} frames, {e['fps']:.1f} fps | odom {e['odom_n']} msgs, {e['odom_hz']:.1f} Hz")
             if e["actions"]:
                 print("  labels: " + ", ".join(a.text() for a in e["actions"]))
+            n_pointing = sum(1 for *_, kind in e["first_input"] if kind == "pointing")
+            print(f"  first decision: {n_pointing} pointing frames + the current one")
             print(f"  topics: {', '.join(t[0] for t in e['topics'])}")
         for p in e["problems"]:
             print(f"  WARNING {p}")
@@ -211,6 +246,7 @@ video { width:100%; border-radius:8px; background:#000 }
 .thumbs { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; margin-top:12px }
 .thumbs figure { margin:0 } .thumbs img { width:100%; border-radius:6px; display:block }
 .thumbs figcaption { font-size:12px; color:var(--muted) } .listening { outline:2px solid var(--accent) }
+.view { position:relative } .crop { position:absolute; border:2px dashed var(--bad); pointer-events:none }
 .path { width:100%; max-width:260px; background:var(--code); border-radius:8px }
 .path .axis { stroke:var(--line) } .path .trail { fill:none; stroke:var(--accent); stroke-width:2.5 }
 .path .start { fill:var(--ok) } .path .end { fill:var(--bad) } .path .heading { stroke:var(--bad); stroke-width:2.5 }
@@ -229,6 +265,16 @@ def esc(s):
     return html.escape(str(s))
 
 
+def figure(fname, caption, cls, crop):
+    """A thumbnail with a dashed box over the part NaVILA keeps (none when it keeps the whole frame)."""
+    box = ""
+    if crop and crop != (0.0, 0.0, 1.0, 1.0):
+        left, top, w, h = crop
+        box = f'<div class="crop" style="left:{left:.1%};top:{top:.1%};width:{w:.1%};height:{h:.1%}"></div>'
+    return (f'<figure><div class="view"><img src="{esc(fname)}" alt="{esc(caption)}" class="{cls}" '
+            f'loading="lazy">{box}</div><figcaption>{esc(caption)}</figcaption></figure>')
+
+
 def episode_html(e):
     m = e["meta"]
     badge = '<span class="badge bad">discarded</span>' if e["discarded"] else '<span class="badge ok">kept</span>'
@@ -243,9 +289,9 @@ def episode_html(e):
     heard = "".join(f"<li>{esc(h['text'])}</li>" for h in m.get("heard", []))
     video = (f'<video controls preload="metadata" src="{esc(e["video"])}"></video>' if e["video"]
              else '<p class="muted">no video (ffmpeg missing or under 2 frames)</p>')
-    thumbs = "".join(
-        f'<figure><img src="{esc(f)}" alt="frame at {t:.1f} s" class="{ph}" loading="lazy">'
-        f'<figcaption>{t:+.1f} s, {ph}</figcaption></figure>' for f, t, ph in e["thumbs"])
+    thumbs = "".join(figure(f, f"{t:+.1f} s, {ph}", ph, e["crop"]) for f, t, ph in e["thumbs"])
+    first = "".join(figure(f, f"{t:+.1f} s, {kind}", "listening" if kind == "pointing" else "", e["crop"])
+                    for f, t, kind in e["first_input"])
     labels = ", ".join(a.text() for a in e["actions"]) or "none (no odometry while driving)"
     rows = "".join(
         f"<tr><td>{esc(t)}<br><span class='muted'>{esc(ty)}</span></td><td>{n}</td><td>{hz:.1f}</td>"
@@ -264,6 +310,8 @@ def episode_html(e):
   <div class="facts">{''.join(f'<div><span>{esc(k)}</span>{esc(v)}</div>' for k, v in facts)}</div>
   <div><span class="muted">NaVILA labels from odometry:</span><div class="labels">{esc(labels)}</div></div>
   {f'<div><span class="muted">STT heard while listening:</span><ul>{heard}</ul></div>' if heard else ''}
+  <div><span class="muted">NaVILA's first decision sees these, pointing frames first. The person and where
+    they point must be inside the dashed box, the part NaVILA keeps:</span><div class="thumbs">{first}</div></div>
   <div class="thumbs">{thumbs}</div>
   <details><summary>Everything in this bag ({len(e['topics'])} topics)</summary>
     <table><tr><th>topic / type</th><th>msgs</th><th>Hz</th><th>max gap s</th><th>first message</th></tr>{rows}</table>
@@ -306,7 +354,8 @@ def main():
         sys.exit(f"{session}: no episodes yet")
     out = session / "preview"
     out.mkdir(exist_ok=True)
-    eps = sorted((analyse(d, out, disc) for d, disc in ep_dirs), key=lambda e: e["name"])
+    params = load_params()  # the inference settings (configs/robots/roxy.yaml), not the session's copy
+    eps = sorted((analyse(d, out, disc, params) for d, disc in ep_dirs), key=lambda e: e["name"])
     print_summary(eps)
     (out / "index.html").write_text(page_html(session.name, eps))
     kept = [e for e in eps if not e["discarded"]]

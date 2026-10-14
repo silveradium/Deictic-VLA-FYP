@@ -96,7 +96,9 @@ The modified forks currently sit untracked in the repo root, and the images read
 - [ ] 6. `docker/navila` + `navila_node` + `mode:=infer` (pretrained). Server image done and tested
 - [ ] 7. Remote demo: `make demo-gpu` (workstation) + `make demo-site` (venue laptop), NaVILA over HTTP on
   Tailscale ([docs/runbooks/live-demo.md](docs/runbooks/live-demo.md)). Still open: zenoh for live topics, latency test
-- [ ] 8. `data_pipeline/deepoint` augmentation + `export` to NaVILA format
+- [ ] 8. `data_pipeline/deepoint` augmentation + `export` to NaVILA format. Export and mixing with NaVILA
+  replay data (against forgetting): `data_pipeline/export/mix_navila.ipynb`, outside Docker
+  (`pip install -r data_pipeline/export/requirements.txt`)
 - [ ] 9. `training/`: env, LoRA config, aberdeen job scripts
 
 ## Rules

@@ -8,6 +8,10 @@ navila_go2.common, copied into the ROS image, so sim and robot share one impleme
 Instruction: publish std_msgs/String on navila/instruction (`make instruct TEXT="..."`).
 "stop" or an empty string ends the episode and holds still.
 
+Pointing: the gesture is made while the instruction is given, before the robot moves, so the frames
+of the last gesture_window_s seconds are kept and gesture_frames of them start the history. The
+training data is exported with the same rule and values (data_pipeline/real/navila_input.py).
+
 Velocity goes to cmd_vel, twist_mux priority 5: the joystick (priority 10) always overrides.
 Dry run unless enable_motion is true: commands are logged, not published.
 
@@ -21,6 +25,7 @@ the mid-level speeds (min_ang_speed_deg etc.) for the real Go2.
 
 import math
 import time
+from collections import deque
 
 import cv2
 import numpy as np
@@ -71,6 +76,8 @@ class NavilaNode(Node):
             ("odom_topic", "odom"),
             ("cmd_topic", "cmd_vel"),
             ("image_mode", "crop"),
+            ("gesture_frames", 4),
+            ("gesture_window_s", 3.0),
             ("instruction", ""),
             ("lin_speed", 0.5),
             ("ang_speed_deg", 30.0),
@@ -98,8 +105,10 @@ class NavilaNode(Node):
         ))
         self.history = FrameHistory()
         self.frame, self.frame_t = None, 0.0
+        self.recent = deque()  # (t, frame) of the last gesture_window_s + 1 s, for the pointing frames
         self.pose, self.pose_t = None, 0.0
         self.instruction = self.cfg["instruction"] or None
+        self.instruction_t = time.time()
         self.mode = "idle"
         self.future = None
         self.n_actions = 0
@@ -125,6 +134,9 @@ class NavilaNode(Node):
     # ---------------- callbacks ----------------
     def on_image(self, msg):
         self.frame, self.frame_t = to_navila_view(image_to_rgb(msg), self.cfg["image_mode"]), time.time()
+        self.recent.append((self.frame_t, self.frame))
+        while self.recent[0][0] < self.frame_t - self.cfg["gesture_window_s"] - 1.0:
+            self.recent.popleft()
 
     def on_odom(self, msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
@@ -139,13 +151,32 @@ class NavilaNode(Node):
             self.get_logger().info("stopped by instruction")
         else:
             self.instruction, self.mode = text, "idle"  # restarts in tick()
+            self.instruction_t = time.time()
 
     # ---------------- control loop ----------------
+    def gesture_frames(self, t_end):
+        """Frames nearest gesture_frames times spread over the gesture_window_s s before t_end, the last
+        window / n before it, each within 0.5 s and used once. Same rule as
+        data_pipeline/real/navila_input.py pick_gesture, which builds the training data: change both."""
+        n, window = self.cfg["gesture_frames"], self.cfg["gesture_window_s"]
+        before = [(t, f) for t, f in self.recent if t < t_end]
+        picked = []
+        for k in range(n):
+            target = t_end - window * (n - k) / n
+            t, frame = min(before, key=lambda tf: abs(tf[0] - target), default=(None, None))
+            if t is not None and abs(t - target) <= 0.5 and not any(frame is p for p in picked):
+                picked.append(frame)
+        return picked
+
     def start_episode(self):
         self.history.reset()
+        pointing = self.gesture_frames(self.instruction_t)
+        for frame in pointing:
+            self.history.add(frame)
         self.ctrl.reset_heading(self.pose[2])
         self.n_actions = 0
-        self.get_logger().info(f"new instruction: {self.instruction!r}")
+        self.get_logger().info(f"new instruction: {self.instruction!r} "
+                               f"({len(pointing)} of {self.cfg['gesture_frames']} pointing frames)")
         self.query()
 
     def query(self):

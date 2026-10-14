@@ -1,0 +1,7 @@
+# mix_navila.ipynb (outside the ROS images): pip install -r data_pipeline/export/requirements.txt
+huggingface_hub>=0.24
+ijson>=3.2
+numpy
+opencv-python-headless
+pyyaml
+rosbags>=0.10
