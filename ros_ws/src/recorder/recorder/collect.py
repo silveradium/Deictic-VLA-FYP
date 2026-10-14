@@ -2,16 +2,14 @@
 
   make collect     (starts bringup if it isn't running, then this, in the foreground)
 
-  Enter    new episode: recording starts and the mic is LISTENING. Point at the target and say
-           the instruction ("go to that door"); what STT hears is printed as you speak
-  Enter    done speaking: drive Roxy to the target with the remote
+  Enter    new episode: recording starts. Point at the target and type the instruction
+           ("go to that door")
+  Enter    instruction done: drive Roxy to the target with the remote
   Ctrl-C   end the episode, then Enter = keep, d = discard, e = edit the instruction
   q        quit (Ctrl-C at the prompt does the same)
 
-Recording starts at the first Enter, not the second, so the frames of the pointing gesture made
-while speaking are in the bag. The instruction is what STT (stt/transcript, from bringup) heard
-between the two Enters, plus listen_grace_s for the last sentence to come out of STT. With no mic
-(STT=false) it is typed after the episode.
+Recording starts at the first Enter, not the second, so the frames of the pointing gesture are in
+the bag. The instruction is typed by hand (no mic); left empty, it is typed after the episode.
 
 Every topic in roxy.yaml recorder.topics is subscribed for the whole session (raw bytes, never
 decoded, with the publisher's QoS), so recording starts instantly; messages are only written while
@@ -200,13 +198,10 @@ class Terminal:
     def status(self):
         n = self.node
         odom, cam = n.rate(ODOM), n.rate(CAMERA)
-        stt = "stt_node" in n.get_node_names()
-        line = f"odom {odom:.0f} Hz | camera {cam:.0f} fps | mic {'on' if stt else 'OFF'}"
+        line = f"odom {odom:.0f} Hz | camera {cam:.0f} fps"
         problems = [msg for msg, ok in (
             ("NO ODOM: is the Go2 connected? (make logs)", odom > 0),
-            ("NO CAMERA: is the Pi camera up? (make pi-up on the Pi)", cam > 0),
-            ("STT not running: plug the mic in, then restart bringup (make down; make collect),"
-             " or type the instructions", stt)) if not ok]
+            ("NO CAMERA: is the Pi camera up? (make pi-up on the Pi)", cam > 0)) if not ok]
         return line, problems
 
     def wait_ready(self, timeout=40.0):
@@ -246,25 +241,21 @@ class Terminal:
         node.open_bag(path)
         t_listen = time.time()
         node.event(event="listen", episode=self.n)
-        print(f"\n● REC {name}  LISTENING: point at the target and say the instruction, then Enter")
-        node.on_heard = lambda text: print(f'    heard: "{text}"', flush=True)
+        print(f"\n● REC {name}  point at the target, type the instruction, then Enter")
         try:
-            input()
+            instruction = input("  instruction > ").strip()
         except (KeyboardInterrupt, EOFError):
-            node.on_heard = None
+            print()
             node.event(event="end", episode=self.n, reason="cancelled")
             node.close_bag()
             self.discard(name, path, None)
             print("  cancelled (in discarded/)")
             return
         t_go = time.time()
-        time.sleep(node.grace)  # the last sentence may still be coming out of STT
-        node.on_heard = None
-        heard = [{"t": round(t, 3), "text": s} for t, s in list(node.heard) if t >= t_listen]
-        instruction = " ".join(h["text"] for h in heard)
+        heard = []
         node.event(event="go", episode=self.n, instruction=instruction)
         print(f'  instruction: "{instruction}"' if instruction
-              else "  (heard nothing: type the instruction after the episode)")
+              else "  (no instruction: type it after the episode)")
         print("  DRIVE Roxy to the target with the remote, Ctrl-C when it has stopped")
         try:
             while True:
@@ -280,7 +271,7 @@ class Terminal:
         counts, motion = node.close_bag()
 
         meta = {"session": self.session, "episode": self.n, "instruction": instruction,
-                "instruction_source": "stt" if instruction else "", "heard": heard,
+                "instruction_source": "typed" if instruction else "", "heard": heard,
                 "t_listen": round(t_listen, 3), "t_go": round(t_go, 3), "t_end": round(t_end, 3),
                 "listen_s": round(t_go - t_listen, 2), "drive_s": round(t_end - t_go, 2),
                 "frames": counts.get(CAMERA, 0), "odom_msgs": counts.get(ODOM, 0),

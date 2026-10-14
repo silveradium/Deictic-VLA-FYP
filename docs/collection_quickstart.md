@@ -16,7 +16,7 @@ data/sessions/session_20261013_153000/   ← one session
 ## Before you start
 
 1. Pi on (the camera starts by itself; if not, `make pi-up`).
-2. DJI mic: transmitter on, receiver plugged into the laptop.
+2. No mic for now (`STT=false` in `.env`): instructions are typed.
 3. Go2 on and standing. **Close the Unitree app on every phone.**
 4. First time after pulling new code: `make build-ros`.
 
@@ -33,8 +33,8 @@ Wait for `Episode 1: [Enter] start`. Fix any line starting with `!` first.
 | Step | You do | Key |
 |---|---|---|
 | 1 | Start recording | **Enter** |
-| 2 | Point at the target and say the instruction | |
-| 3 | Done speaking | **Enter** |
+| 2 | Point at the target and type the instruction | |
+| 3 | Instruction done | **Enter** |
 | 4 | Drive Roxy to the target with the remote (turn on the spot, walk forward, no sideways, no reversing) | |
 | 5 | Roxy stopped at the target, so end the episode | **Ctrl-C** |
 | 6 | Keep it / discard it / fix the instruction | **Enter** / **d** / **e** |
@@ -51,7 +51,7 @@ Back at `Episode 2: [Enter] start`. Repeat from step 1.
 | When | Ctrl-C |
 |---|---|
 | Driving (step 4) | Ends the episode (normal) |
-| Speaking (step 2) | Cancels the episode |
+| Typing (step 2) | Cancels the episode |
 | At the `Episode N` prompt | Ends the session (same as `q`) |
 
 ## Look at what you recorded
