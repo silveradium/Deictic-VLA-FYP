@@ -17,8 +17,14 @@ shutdown) it also sends Unitree's StopMove through webrtc_req.
 
 Each finished action is logged with what was asked vs. what odometry measured, to tune
 the mid-level speeds (min_ang_speed_deg etc.) for the real Go2.
+
+navila/step (std_msgs/String, JSON) narrates each episode for the dashboard (scripts/dashboard):
+instruction, every decision with the frames actually sent (thumbnails, oldest first), the
+model's text, the parsed action and latency, then what odometry measured for it.
 """
 
+import base64
+import json
 import math
 import time
 
@@ -34,11 +40,18 @@ from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
-from navila_go2.common.client import FrameHistory, NaVilaClient
+from navila_go2.common.client import FrameHistory, NaVilaClient, sample_frames
 from navila_go2.common.mid_level import FORWARD, STOP, MidLevelConfig, MidLevelController
 
 SPORT_TOPIC = "rt/api/sport/request"
 STOP_MOVE = 1003  # Unitree sport API: StopMove
+THUMB_SIZE = 192  # px, frames in navila/step
+
+
+def thumbnail(rgb: np.ndarray) -> str:
+    small = cv2.resize(rgb, (THUMB_SIZE, THUMB_SIZE), interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode(".jpg", cv2.cvtColor(small, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 75])
+    return base64.b64encode(buf.tobytes()).decode("ascii") if ok else ""
 
 
 def image_to_rgb(msg: Image) -> np.ndarray:
@@ -109,6 +122,8 @@ class NavilaNode(Node):
 
         self.cmd_pub = self.create_publisher(Twist, self.cfg["cmd_topic"], 10)
         self.decision_pub = self.create_publisher(String, "navila/decision", 10)
+        self.step_pub = self.create_publisher(String, "navila/step", 10)
+        self.sent_frames = []  # thumbnails of the frames in the request in flight
         self.webrtc_pub = self.create_publisher(WebRtcReq, "webrtc_req", 10)
         self.create_subscription(Image, self.cfg["camera_topic"], self.on_image, qos_profile_sensor_data)
         self.create_subscription(Odometry, self.cfg["odom_topic"], self.on_odom, 10)
@@ -137,6 +152,7 @@ class NavilaNode(Node):
         if not text or text.lower() == "stop":
             self.instruction, self.mode = None, "done"
             self.get_logger().info("stopped by instruction")
+            self.emit("stopped")
         else:
             self.instruction, self.mode = text, "idle"  # restarts in tick()
 
@@ -146,12 +162,19 @@ class NavilaNode(Node):
         self.ctrl.reset_heading(self.pose[2])
         self.n_actions = 0
         self.get_logger().info(f"new instruction: {self.instruction!r}")
+        self.emit("instruction", text=self.instruction)
         self.query()
 
     def query(self):
         self.history.add(self.frame)
+        self.sent_frames = [thumbnail(f) for f in sample_frames(self.history.frames, self.client.num_frames)]
         self.future = self.client.act_async(self.instruction, self.history)
         self.mode = "thinking"
+        self.emit("query", n=self.n_actions + 1, instruction=self.instruction, history=len(self.history))
+
+    def emit(self, event, /, **fields):
+        self.step_pub.publish(String(data=json.dumps(
+            {"type": event, "t": round(time.time(), 3), "motion": self.cfg["enable_motion"], **fields})))
 
     def publish(self, vx, vy, wz):
         vx = max(-self.cfg["max_lin"], min(self.cfg["max_lin"], vx))
@@ -177,6 +200,8 @@ class NavilaNode(Node):
         self.get_logger().info(
             f"   done {a}: measured {done:.0f} {unit} of {asked:.0f} in {time.time() - self.action_t0:.1f}s"
             + ("  TIMED OUT" if c.timed_out else ""))
+        self.emit("outcome", n=self.n_actions, action=str(a), asked=round(asked), measured=round(done),
+                  unit=unit, seconds=round(time.time() - self.action_t0, 1), timed_out=c.timed_out)
 
     def tick(self):
         now = time.time()
@@ -197,15 +222,21 @@ class NavilaNode(Node):
                 action, out = fut.result()
             except Exception as e:  # never keep moving on a failed decision
                 self.get_logger().error(f"NaVILA request failed: {e}; stopping")
+                self.emit("error", error=str(e))
                 self.mode, self.instruction = "done", None
                 action = None
             if action is not None:
                 self.n_actions += 1
                 self.get_logger().info(f"#{self.n_actions:02d} {out['text']!r} -> {action} ({out['latency_s']:.2f}s)")
                 self.decision_pub.publish(String(data=out["text"]))
+                self.emit("decision", n=self.n_actions, instruction=self.instruction, text=out["text"],
+                          action=str(action), kind=action.kind, value=action.value,
+                          latency_s=round(out.get("latency_s", 0.0), 2),
+                          roundtrip_s=round(out.get("roundtrip_s", 0.0), 2), frames=self.sent_frames)
                 if action.kind == STOP or self.n_actions >= self.cfg["max_actions"]:
                     self.mode, self.instruction = "done", None
                     self.get_logger().info("episode finished")
+                    self.emit("finished", n=self.n_actions)
                 else:
                     self.ctrl.start(action, self.pose)
                     self.units_recorded = 0

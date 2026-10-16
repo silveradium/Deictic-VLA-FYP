@@ -7,5 +7,27 @@ services:
       ros2 launch deictic_bringup bringup.launch.py mode:=infer
       enable_motion:=${NAVILA_MOTION:-false}
       stt:=${STT:-true}
+      mic:=${MIC:-dji}
       voice:=${VOICE:-false}
       camera_topic:=${NAVILA_CAMERA_TOPIC:-camera/image_raw}
+
+  # Live dashboard (scripts/dashboard): camera, what was heard, Gemini vs NaVILA, every NaVILA
+  # decision with its frames, and readable logs per machine. http://localhost:${DASHBOARD_PORT:-8080}
+  dashboard:
+    image: deictic/ros:humble
+    network_mode: host
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      CYCLONEDDS_URI: file:///deictic/configs/cyclonedds.xml
+      DDS_IFACE: ${DDS_IFACE:-}
+      PI_IP: ${PI_IP:-}
+      BRIDGE_IP: ${BRIDGE_IP:-}
+      NAVILA_SERVER_URL: ${NAVILA_SERVER_URL:-http://127.0.0.1:8000}
+      NAVILA_MOTION: ${NAVILA_MOTION:-false}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
+    volumes:
+      - ./configs:/deictic/configs:ro
+      - ./scripts/dashboard:/deictic/dashboard:ro
+    command: python3 -u /deictic/dashboard/dashboard.py
+    stop_signal: SIGINT

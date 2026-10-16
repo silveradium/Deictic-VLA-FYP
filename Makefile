@@ -15,7 +15,7 @@ STACK_PI      := $(COMPOSE)/pi.yml
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
         instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
         demo-gpu demo-site navila-health build-pi pi-volume pi-up pi-down pi-logs pi-shell \
-        demo-site demo-gpu bag2ep export train-submit
+        demo-site demo-gpu dashboard bag2ep export train-submit
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -89,14 +89,22 @@ demo-gpu: ## Live demo, workstation: NaVILA server for the venue laptop, over Ta
 	$(STACK_NAVILA) up
 
 demo-site: ## Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA via the workstation (MOTION=1 to move)
-	@grep -qE '^NAVILA_SERVER_URL=http://(127\.0\.0\.1|localhost)' .env \
-		&& { echo "NAVILA_SERVER_URL in .env points at this machine: set it to the workstation (make demo-gpu prints it)"; exit 1; } || true
+	@# A local URL is fine through an SSH tunnel (ssh -N -L 8000:127.0.0.1:8000 <server>), as long as it answers
+	@url=$$(grep -oP '^NAVILA_SERVER_URL=\K\S+' .env); \
+	if echo "$$url" | grep -qE '^http://(127\.0\.0\.1|localhost)' && ! curl -fsS --max-time 5 "$$url/health" >/dev/null; then \
+		echo "NAVILA_SERVER_URL ($$url) points at this machine and nothing answers there:"; \
+		echo "  open the SSH tunnel to the GPU server, or set the workstation's URL (make demo-gpu prints it)"; exit 1; fi
+	@echo "Dashboard: http://localhost:$$(grep -oP '^DASHBOARD_PORT=\K[0-9]+' .env 2>/dev/null || echo 8080)"
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_SITE) up
+
+dashboard: ## Live dashboard on its own, next to a running stack (http://localhost:8080; MOTION=1 if it moves)
+	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_SITE) up -d dashboard
+	@echo "Dashboard: http://localhost:$$(grep -oP '^DASHBOARD_PORT=\K[0-9]+' .env 2>/dev/null || echo 8080)"
 
 navila-health: ## Check the NaVILA server answers at NAVILA_SERVER_URL (run on the laptop)
 	@url=$$(grep -oP '^NAVILA_SERVER_URL=\K\S+' .env); \
 	curl -fsS --max-time 5 "$$url/health" && echo "  <- NaVILA server OK at $$url" \
-		|| { echo "NaVILA server not reachable at $$url (make demo-gpu running? Tailscale up on both?)"; exit 1; }
+		|| { echo "NaVILA server not reachable at $$url (server running? Tailscale up on both, or the SSH tunnel open?)"; exit 1; }
 
 # --- Pi (run these on the Pi; robot/pi/README.md) ------------------------------
 build-pi: ## On the Pi: build the Pi image (arm64 Humble + Orbbec driver)

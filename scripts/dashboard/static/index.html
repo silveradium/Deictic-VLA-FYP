@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roxy · Deictic VLA</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logos">
+      <img src="logos/uom.png" alt="University of Moratuwa" data-fallback="University of Moratuwa">
+      <img src="logos/entc.png" alt="ENTC" data-fallback="ENTC">
+      <img src="logos/rysera.png" alt="Rysera" data-fallback="Rysera">
+    </div>
+    <div class="title">
+      <h1>Roxy <span>Deictic VLA</span></h1>
+      <p>Point, speak, and the robot goes</p>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="live" role="tab">Live</button>
+    <button class="tab" data-tab="vla" role="tab">VLA</button>
+    <button class="tab" data-tab="logs" role="tab">Logs</button>
+  </nav>
+</header>
+
+<section class="statusbar" id="statusbar">
+  <div class="pill" id="st-robot"><i></i><b>Robot</b><span>…</span></div>
+  <div class="pill" id="st-camera"><i></i><b>Camera</b><span>…</span></div>
+  <div class="pill" id="st-server"><i></i><b>NaVILA</b><span>…</span></div>
+  <div class="pill" id="st-voice"><i></i><b>Voice</b><span>listening</span></div>
+  <div class="pill mode" id="st-mode"><b>DRY RUN</b></div>
+  <div class="pill" id="st-link"><i></i><b>Dashboard</b><span>connecting</span></div>
+</section>
+
+<!-- ============ LIVE ============ -->
+<main class="view active" id="view-live">
+  <div class="live-grid">
+    <div class="stage">
+      <div class="video">
+        <img src="stream.mjpg" alt="Orbbec camera, live">
+        <div class="badge live-badge"><i></i>LIVE</div>
+        <div class="badge fps" id="live-fps">– fps</div>
+        <div class="overlay-action" id="overlay-action" hidden>
+          <span class="glyph" id="overlay-glyph"></span>
+          <span id="overlay-text"></span>
+        </div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="card heard">
+        <div class="card-label">Heard</div>
+        <div class="heard-text" id="heard-text"><span class="muted">Say “Hey Roxy, …”</span></div>
+        <div class="heard-meta" id="heard-meta"></div>
+      </div>
+
+      <div class="card route">
+        <div class="card-label">Sent to</div>
+        <div class="lanes">
+          <div class="lane gemini" id="lane-gemini">
+            <div class="lane-name">Gemini</div>
+            <div class="lane-desc">question · spoken reply</div>
+          </div>
+          <div class="lane navila" id="lane-navila">
+            <div class="lane-name">NaVILA</div>
+            <div class="lane-desc">command · robot moves</div>
+          </div>
+        </div>
+        <div class="reply" id="reply" hidden></div>
+      </div>
+
+      <div class="card decision">
+        <div class="card-label">Robot decision <span class="right" id="decision-meta"></span></div>
+        <div class="decision-main" id="decision-main">
+          <span class="glyph" id="decision-glyph">·</span>
+          <span class="decision-text" id="decision-text">Waiting for a command</span>
+        </div>
+        <div class="instruction" id="instruction"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="card history">
+    <div class="card-label">Conversation</div>
+    <ol class="history-list" id="history-list"></ol>
+  </div>
+</main>
+
+<!-- ============ VLA ============ -->
+<main class="view" id="view-vla">
+  <div class="vla-streams">
+    <div class="card stream-card">
+      <div class="card-label">Camera <span class="right muted">continuous, ~15 fps</span></div>
+      <div class="video small"><img data-src="stream.mjpg" alt="Orbbec camera, live"></div>
+    </div>
+    <div class="card stream-card">
+      <div class="card-label">Sent to NaVILA <span class="right muted" id="sent-meta">one frame per decision</span></div>
+      <div class="video small sent">
+        <img id="sent-frame" alt="Latest frame sent to NaVILA" hidden>
+        <div class="empty" id="sent-empty">No request yet</div>
+        <div class="vla-thinking" id="thinking" hidden><span></span><span></span><span></span> NaVILA is thinking</div>
+        <div class="overlay-action small" id="sent-action" hidden></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">Decisions <span class="right muted">newest first · 8 frames per request, oldest → newest</span></div>
+    <div class="timeline" id="timeline"><div class="empty">Give NaVILA an instruction to see its decisions here</div></div>
+  </div>
+</main>
+
+<!-- ============ LOGS ============ -->
+<main class="view" id="view-logs">
+  <div class="log-tools">
+    <div class="seg" id="level-filter">
+      <button data-level="all" class="on">All</button>
+      <button data-level="warn">Warnings +</button>
+      <button data-level="error">Errors</button>
+    </div>
+    <input type="search" id="log-search" placeholder="Search logs…">
+    <label class="check"><input type="checkbox" id="log-follow" checked> Follow</label>
+  </div>
+  <div class="log-cols">
+    <div class="card log-col" data-machine="laptop">
+      <div class="card-label">Laptop <span class="sub">Go2 bridge · mic · Gemini · navila_node</span><span class="count" id="count-laptop">0</span></div>
+      <ol class="log" id="log-laptop"></ol>
+    </div>
+    <div class="card log-col" data-machine="pi">
+      <div class="card-label">Raspberry Pi <span class="sub">Orbbec camera · speaker</span><span class="count" id="count-pi">0</span></div>
+      <ol class="log" id="log-pi"></ol>
+    </div>
+    <div class="card log-col" data-machine="server">
+      <div class="card-label">NaVILA server <span class="sub">GPU workstation</span><span class="count" id="count-server">0</span></div>
+      <ol class="log" id="log-server"></ol>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

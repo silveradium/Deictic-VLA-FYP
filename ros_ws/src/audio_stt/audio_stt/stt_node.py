@@ -1,6 +1,7 @@
 """Mic -> Moonshine speech-to-text -> stt/transcript, one message per finished sentence.
 
-Runs in the bringup container on the machine the DJI Mic Mini receiver is plugged into
+Runs in the bringup container on the machine the mic is on: the DJI Mic Mini receiver (MIC=dji in
+.env) or the laptop's built-in mic (MIC=builtin)
 (docs/network.md). Moonshine runs on the CPU; the first start downloads the model into the
 stt_models volume (docker/compose/ros.yml). Parameters: configs/robots/roxy.yaml, stt_node.
 
@@ -29,9 +30,17 @@ LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
 class SttNode(Node):
     def __init__(self):
         super().__init__("stt_node")
-        # a substring of the device name, an index, "pulse" or "default"
+        # mic:=dji|builtin picks mic_device_dji or mic_device_builtin; mic_device, when set,
+        # overrides both. Each is a substring of the device name, an index, "pulse" or "default"
+        mic = self.declare_parameter("mic", "dji").value
+        presets = {
+            "dji": self.declare_parameter("mic_device_dji", "MINI").value,
+            "builtin": self.declare_parameter("mic_device_builtin", "default").value,
+        }
+        if mic not in presets:
+            raise ValueError(f"mic must be one of {sorted(presets)}, not {mic!r}")
         device = str(self.declare_parameter(
-            "mic_device", "MINI", ParameterDescriptor(dynamic_typing=True)).value)
+            "mic_device", "", ParameterDescriptor(dynamic_typing=True)).value) or str(presets[mic])
         arch = self.declare_parameter("model_arch", "medium-streaming").value
         keyterms = self.declare_parameter("keyterms", ["Roxy", "Hey Roxy"]).value
         self.unmute_delay = self.declare_parameter("unmute_delay", 0.5).value

@@ -35,7 +35,7 @@ services:
     device_cgroup_rules:
       - "c 13:* rmw"  # input devices
       - "c 116:* rmw"  # sound devices (ALSA)
-    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} voice:=${VOICE:-false}
+    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} mic:=${MIC:-dji} voice:=${VOICE:-false}
     stop_signal: SIGINT  # lets ros2 launch shut the nodes down cleanly
 
 volumes:

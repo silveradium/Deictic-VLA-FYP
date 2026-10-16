@@ -95,7 +95,7 @@ def generate_launch_description():
         executable="stt_node",
         output="screen",
         condition=stt,
-        parameters=[LaunchConfiguration("robot_config")],
+        parameters=[LaunchConfiguration("robot_config"), {"mic": LaunchConfiguration("mic")}],
     )
     voice_on = PythonExpression(["'", LaunchConfiguration("voice"), "' == 'true'"])
     wake_router = Node(
@@ -146,6 +146,8 @@ def generate_launch_description():
                               description="Robot parameters (configs/robots/, mounted in the container)"),
         DeclareLaunchArgument("stt", default_value="true",
                               description="Mic speech-to-text + 'Hey Roxy' -> navila/instruction"),
+        DeclareLaunchArgument("mic", default_value="dji", choices=["dji", "builtin"],
+                              description="stt: DJI Mic Mini receiver or this machine's built-in mic"),
         DeclareLaunchArgument("voice", default_value="false",
                               description="Spoken replies: Gemini dialog + TTS on the Pi speaker (GEMINI_API_KEY)"),
         DeclareLaunchArgument("orbbec", default_value="true",
