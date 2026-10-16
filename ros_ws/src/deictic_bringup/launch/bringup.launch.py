@@ -59,6 +59,15 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Restarts the driver when odometry stops (a silent WebRTC link); the driver itself runs with
+    # respawn, patched into go2_robot_sdk's robot.launch.py by docker/ros/Dockerfile
+    go2_watchdog = Node(
+        package="deictic_bringup",
+        executable="go2_watchdog",
+        output="screen",
+        parameters=[LaunchConfiguration("robot_config")],
+    )
+
     go2_config = PathJoinSubstitution([FindPackageShare("go2_robot_sdk"), "config"])
     joystick = IfCondition(LaunchConfiguration("joystick"))
     joy = Node(
@@ -158,6 +167,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_motion", default_value="false",
                               description="infer: actually publish cmd_vel (false = dry run, log only)"),
         GroupAction([go2_bridge]),  # scoped: the include's arguments (joystick:=false) stay inside
+        go2_watchdog,
         joy,
         teleop,
         orbbec_decode,

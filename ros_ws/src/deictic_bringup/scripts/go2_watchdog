@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Restarts the Go2 driver when the robot's data stops arriving.
+
+The go2 WebRTC link can go quiet without the driver noticing: "Robot 0 validated and ready", then no
+odometry (a lossy 2.4 GHz link, the Unitree app taking the robot). The driver also exits for good when
+its first connection attempt times out. bringup runs the driver with respawn (docker/ros/Dockerfile
+patches go2_robot_sdk's robot.launch.py), so this node only has to stop a stalled driver: launch starts
+a fresh one, which reconnects.
+
+A restart happens when the driver process is running and odom has been silent for stall_s, or never
+arrived within startup_s of the driver starting; at most once per cooldown_s. Velocity commands stop
+with the driver, and navila_node holds still on stale odometry, so a restart never moves the robot.
+"""
+
+import os
+import signal
+import time
+from pathlib import Path
+
+import rclpy
+from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
+from rclpy.node import Node
+
+DRIVER = "go2_driver_node"
+
+
+def driver_pid():
+    """PID of the running go2_driver_node process (same container), or None."""
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit() or int(proc.name) == os.getpid():
+            continue
+        try:
+            argv = (proc / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        # the executable itself, not a shell or `ros2 run` that mentions it
+        if any(arg.endswith(b"/" + DRIVER.encode()) for arg in argv[:2]):
+            return int(proc.name)
+    return None
+
+
+class Go2Watchdog(Node):
+    def __init__(self):
+        super().__init__("go2_watchdog")
+        self.stall_s = self.declare_parameter("stall_s", 15.0).value
+        self.startup_s = self.declare_parameter("startup_s", 45.0).value
+        self.cooldown_s = self.declare_parameter("cooldown_s", 30.0).value
+        self.last_odom = 0.0
+        self.pid, self.pid_since = None, time.monotonic()
+        self.last_restart = 0.0
+        self.create_subscription(Odometry, "odom", self.on_odom, 10)
+        self.create_timer(1.0, self.check)
+        self.get_logger().info(f"watching {DRIVER}: restart after {self.stall_s:.0f} s without odometry")
+
+    def on_odom(self, _):
+        if self.last_odom and time.monotonic() - self.last_odom > self.stall_s:
+            self.get_logger().info("odometry back")
+        self.last_odom = time.monotonic()
+
+    def check(self):
+        now = time.monotonic()
+        pid = driver_pid()
+        if pid != self.pid:  # started, respawned or exited
+            self.pid, self.pid_since = pid, now
+        if pid is None or now - self.last_restart < self.cooldown_s:
+            return
+        since_odom = now - max(self.last_odom, self.pid_since)
+        limit = self.stall_s if self.last_odom > self.pid_since else self.startup_s
+        if since_odom < limit:
+            return
+        self.get_logger().warn(f"no odometry for {since_odom:.0f} s: restarting {DRIVER} (pid {pid}) "
+                               "to reconnect to the robot")
+        self.last_restart = now
+        self.stop(pid)
+
+    def stop(self, pid):
+        try:
+            os.kill(pid, signal.SIGINT)  # lets the driver close its WebRTC session
+            for _ in range(50):
+                time.sleep(0.1)
+                os.kill(pid, 0)
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def main():
+    rclpy.init()
+    node = Go2Watchdog()
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+if __name__ == "__main__":
+    main()

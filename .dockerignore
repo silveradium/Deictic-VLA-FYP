@@ -3,6 +3,7 @@
 **
 !ros_ws/src/
 !docker/ros/entrypoint.sh
+!docker/ros/patch_go2_respawn.py
 !robot/pi/deictic_pi/
 !docker/pi/entrypoint.sh
 **/__pycache__

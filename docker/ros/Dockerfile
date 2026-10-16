@@ -42,6 +42,12 @@ RUN touch src/go2_ros2_sdk/coco_detector/COLCON_IGNORE \
     && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release \
     && rm -rf build log
 
+# The driver exits for good when its first connection attempt times out (a lossy Wi-Fi moment):
+# respawn it, so it keeps trying. deictic_bringup's go2_watchdog restarts it when odometry stalls.
+COPY docker/ros/patch_go2_respawn.py /tmp/patch_go2_respawn.py
+RUN python3 /tmp/patch_go2_respawn.py \
+        /opt/go2_ws/install/go2_robot_sdk/share/go2_robot_sdk/launch/robot.launch.py
+
 # NaVILA client + mid-level controller from the NaVILA fork, used by navila_node.
 # Pure Python (numpy, opencv, requests), so the same code runs in sim and on the robot.
 COPY --from=navila navila_go2/__init__.py /opt/navila/navila_go2/__init__.py
