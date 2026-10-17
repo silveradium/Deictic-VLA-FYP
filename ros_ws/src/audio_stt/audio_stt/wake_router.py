@@ -3,6 +3,8 @@
   "Hey Roxy, walk to the door and stop"  -> navila/instruction "walk to the door and stop"
   "Hey Roxy" ... "go over there"         -> the next sentence (within followup_window s) is the request
   "Stop!" (wake phrase or not)           -> navila/instruction "stop" at once
+  "Hi Roxy" / "Hello Roxy" alone        -> stt/request "hi" (with voice: Gemini waves back), and
+                                           the next sentence is still the request
   anything else                          -> ignored
 
 Requests are forwarded word for word: deictic words ("there", "that one") must reach NaVILA as
@@ -37,6 +39,7 @@ class WakeRouter(Node):
         names = p("wake_names", ["roxy", "roxie", "roxi", "rocksy", "roxey"]).value
         loose = p("wake_names_loose", ["rocky", "foxy", "proxy", "rox", "rocks"]).value
         self.stop_words = set(p("stop_words", ["stop", "halt", "freeze"]).value)
+        self.greetings = set(p("greet_prefixes", ["hi", "hello"]).value)  # alone: a "hi" request
         self.window = p("followup_window", 8.0).value
         self.forward = p("forward_to_navila", True).value
 
@@ -82,9 +85,11 @@ class WakeRouter(Node):
         self.deadline = 0.0
 
         if not words:
-            self.get_logger().info("wake phrase alone: the next sentence is the request")
             self.deadline = time.monotonic() + self.window
-            self.request_pub.publish(String(data=""))
+            greeting = match is not None and re.match(r"[a-z']+", match.group(0).lower()).group(0) in self.greetings
+            self.get_logger().info(f"wake phrase alone{' (a greeting)' if greeting else ''}: "
+                                   "the next sentence is the request")
+            self.request_pub.publish(String(data="hi" if greeting else ""))  # never to navila
             return
 
         request = request.strip(" ,.!?;:-")

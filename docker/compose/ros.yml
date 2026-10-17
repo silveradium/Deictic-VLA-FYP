@@ -26,16 +26,19 @@ services:
       CONN_TYPE: ${GO2_CONN_TYPE:-webrtc}
       NAVILA_SERVER_URL: ${NAVILA_SERVER_URL:-http://127.0.0.1:8000}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}  # voice:=true (dialog_node)
+      DISPLAY: ${DISPLAY:-}  # gesture_teleop's camera window (xhost +local: on the host)
+      QT_X11_NO_MITSHM: 1
     volumes:
       - ./configs:/deictic/configs:ro
       - /dev/input:/dev/input  # joystick, mounted (not passed as a device) so hot-plug works
       - /dev/snd:/dev/snd      # mic for audio_stt, mounted for the same reason
       - /run/udev:/run/udev:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw  # gesture window
       - stt_models:/root/.cache/moonshine_voice  # Moonshine model, downloaded on the first start
     device_cgroup_rules:
       - "c 13:* rmw"  # input devices
       - "c 116:* rmw"  # sound devices (ALSA)
-    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} mic:=${MIC:-dji} voice:=${VOICE:-false}
+    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} mic:=${MIC:-dji} voice:=${VOICE:-false} speaker:=${SPEAKER:-true} gesture:=${GESTURE:-false} orbbec:=${ORBBEC:-true}
     stop_signal: SIGINT  # lets ros2 launch shut the nodes down cleanly
 
 volumes:

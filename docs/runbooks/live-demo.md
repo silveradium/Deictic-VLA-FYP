@@ -59,7 +59,7 @@ make build-ros
 | `BRIDGE_IP` | **its own IP** | the laptop's IP | unused |
 | `GO2_IP`, `GO2_AES_KEY` | the robot's | unused | unused |
 | `NAVILA_SERVER_URL` | `http://<workstation Tailscale IP>:8000` | unused | leave the default |
-| `NAVILA_CAMERA_TOPIC` | `orbbec/color/image_decoded` | unused | unused |
+| `CAMERA` | `orbbec`, or `go2` when the Pi is down (the robot's front camera) | unused | unused |
 | `STT`, `VOICE`, `GEMINI_API_KEY` | `true`, `true`, the key | unused | unused |
 | `PI_DEPTH` | unused | `false` (`true` only with a 5 A supply) | unused |
 | `NAVILA_DIR`, `NAVILA_CHECKPOINTS_DIR`, `NAVILA_MODEL` | unused | unused | as today |

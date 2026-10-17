@@ -12,10 +12,27 @@ STACK_NAVILA  := $(COMPOSE)/navila.yml
 STACK_SITE    := $(COMPOSE)/ros.yml -f docker/compose/infer.yml
 STACK_PI      := $(COMPOSE)/pi.yml
 
+# CAMERA=go2|orbbec (.env or the command line) picks what NaVILA and the dashboard see:
+#   go2     the Go2's front camera (camera/image_raw); the Orbbec decoder is off, the Pi isn't needed
+#   orbbec  the Orbbec on the Pi (orbbec/color/image_decoded)
+# Unset: NAVILA_CAMERA_TOPIC from .env, as before. Exported, so it beats .env inside compose.
+CAMERA ?= $(shell grep -oP '^CAMERA=\K\S+' .env 2>/dev/null)
+ifeq ($(CAMERA),go2)
+export NAVILA_CAMERA_TOPIC := camera/image_raw
+export ORBBEC := false
+export DASHBOARD_CAMERA := camera/image_raw
+else ifeq ($(CAMERA),orbbec)
+export NAVILA_CAMERA_TOPIC := orbbec/color/image_decoded
+export ORBBEC := true
+export DASHBOARD_CAMERA := orbbec/color/image_raw/compressed
+else ifneq ($(CAMERA),)
+$(error CAMERA must be go2 or orbbec, not '$(CAMERA)')
+endif
+
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
-        instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
+        instruct navila-stop robot-stop trick calibrate stt-echo say voice-preset \
         demo-gpu demo-site navila-health build-pi pi-volume pi-up pi-down pi-logs pi-shell \
-        demo-site demo-gpu dashboard bag2ep export train-submit
+        demo-site demo-gpu dashboard navila-probe bag2ep export train-submit
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -66,6 +83,11 @@ robot-stop: ## Send the robot Unitree's StopMove directly (any running stack)
 	$(STACK_INFER) exec bringup /entrypoint.sh ros2 topic pub --once -w 1 /webrtc_req \
 		go2_interfaces/msg/WebRtcReq "{topic: 'rt/api/sport/request', api_id: 1003, parameter: '', priority: 1}"
 
+trick: ## Make Roxy do a trick (any running stack): NAME=sit|stand_up|hello|dance|... (ros_ws/src/tricks)
+	@test -n "$(NAME)" || { echo 'usage: make trick NAME=sit   (names: ros_ws/src/tricks/tricks/catalog.py)'; exit 1; }
+	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 topic pub --once -w 1 \
+		/voice/trick std_msgs/msg/String "{data: $(NAME)}"
+
 calibrate: ## Measure the robot's real turn rates (with `make collect`; FORWARD=1 also walks)
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 run navila_node calibrate_motion \
 		--ros-args -p forward:=$(if $(FORWARD),true,false)
@@ -96,6 +118,12 @@ demo-site: ## Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA
 		echo "  open the SSH tunnel to the GPU server, or set the workstation's URL (make demo-gpu prints it)"; exit 1; fi
 	@echo "Dashboard: http://localhost:$$(grep -oP '^DASHBOARD_PORT=\K[0-9]+' .env 2>/dev/null || echo 8080)"
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_SITE) up
+
+navila-probe: ## Which camera view makes NaVILA go forward? Asks it about the live frame many ways (nothing moves)
+	@mkdir -p data/probe
+	$(STACK_SITE) run --rm --no-deps -T -u $$(id -u):$$(id -g) -e HOME=/tmp \
+		-v $(CURDIR)/scripts:/deictic/scripts:ro -v $(CURDIR)/data:/deictic/data \
+		bringup python3 /deictic/scripts/navila_probe.py
 
 dashboard: ## Live dashboard on its own, next to a running stack (http://localhost:8080; MOTION=1 if it moves)
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_SITE) up -d dashboard

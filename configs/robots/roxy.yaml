@@ -15,10 +15,16 @@ navila_node:
     min_lin_speed: 0.15     # m/s, not calibrated yet (make calibrate FORWARD=1)
     min_ang_speed_deg: 30.0 # deg/s
     timeout_factor: 3.0     # give up after factor * nominal duration + 2 s
+    # Each action starts from the current yaw: turns are exactly what NaVILA said, forward walks straight.
+    # true (the sim's Habitat-style heading grid) carried leftover error into the next action: "45 deg"
+    # decisions ran as 0..117 deg on Roxy (2026-10-17)
+    carry_heading: false
+    max_hold_ang_speed_deg: 15.0  # forward steps correct heading at most this fast (never a spin)
     # Hard clamps on anything sent to cmd_vel
     max_lin: 0.5            # m/s
     max_ang: 0.8            # rad/s
-    # Go2 front camera is 16:9; NaVILA squares every frame (crop = center square, squash = full FOV)
+    # NaVILA squares every frame (trained on 90 deg HFOV): crop = center square (~55 deg of the Orbbec's 69),
+    # squash = full width stretched, pad = full width letterboxed. `make navila-probe` compares them
     image_mode: crop
 
 # Joystick (teleop_twist_joy, started by deictic_bringup), on top of go2's twist_mux.yaml. It drives
@@ -37,7 +43,7 @@ stt_node:
     mic_device_dji: MINI          # DJI Mic Mini receiver (USB)
     mic_device_builtin: CS8409    # the laptop's built-in mic (HDA Intel PCH: CS8409/CS42L42 Analog)
     model_arch: medium-streaming  # Moonshine; small-streaming if the CPU can't keep up
-    keyterms: [Roxy, Hey Roxy]    # biases recognition towards the robot's name
+    keyterms: [Roxy, Hey Roxy, heroxy]    # biases recognition towards the robot's name
     unmute_delay: 0.5             # s the mic stays muted after Roxy stops speaking (stt/mute)
 
 # "Hey Roxy" wake phrase -> navila/instruction (audio_stt)
@@ -47,6 +53,7 @@ wake_router:
     wake_names: [roxy, roxie, roxi, rocksy, roxey]      # wake Roxy on their own
     wake_names_loose: [rocky, foxy, proxy, rox, rocks]  # sound-alikes: only after "hey ..."
     stop_words: [stop, halt, freeze]  # a sentence starting with one ends the episode at once, wake phrase or not
+    greet_prefixes: [hi, hello]       # "Hi Roxy" alone is a "hi" request: Roxy waves (with VOICE=true)
     followup_window: 8.0              # s after a bare "Hey Roxy" in which the next sentence is the request
     forward_to_navila: true           # false: only stt/request, another node decides what reaches NaVILA
 
@@ -62,11 +69,17 @@ dialog_node:
     gemini_model: gemini-3.5-flash-lite  # fast; gemini-3.8-flash for smarter answers
     thinking_level: minimal              # "" for the model's default
     gemini_timeout: 15.0                 # s
-    max_words: 35                        # length of spoken answers
+    max_words: 100                        # length of spoken answers
     history_turns: 4                     # earlier exchanges Gemini sees
+
+# Voice tricks (ros_ws/src/tricks): voice/trick -> Unitree sport commands; `make trick NAME=sit`
+trick_node:
+  ros__parameters:
+    stand_settle: 3.0                   # s after StandUp / RiseSit before the next command
+    forward_instruction: forward 1 m    # come_forward: an exact move for navila_node (infer stacks, MOTION=1)
 
 tts_node:
   ros__parameters:
-    voice_preset: scooby               # scooby | robot; `make voice-preset PRESET=robot` while running
+    voice_preset: robot               # scooby | robot; `make voice-preset PRESET=robot` while running
     piper_voice: en_US-ryan-medium     # downloaded into the ROS image (docker/ros/Dockerfile)
     piper_voices_dir: /opt/piper-voices

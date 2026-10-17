@@ -9,7 +9,10 @@ services:
       stt:=${STT:-true}
       mic:=${MIC:-dji}
       voice:=${VOICE:-false}
+      speaker:=${SPEAKER:-true}
+      gesture:=${GESTURE:-false}
       camera_topic:=${NAVILA_CAMERA_TOPIC:-camera/image_raw}
+      orbbec:=${ORBBEC:-true}
 
   # Live dashboard (scripts/dashboard): camera, what was heard, Gemini vs NaVILA, every NaVILA
   # decision with its frames, and readable logs per machine. http://localhost:${DASHBOARD_PORT:-8080}
@@ -26,6 +29,7 @@ services:
       NAVILA_SERVER_URL: ${NAVILA_SERVER_URL:-http://127.0.0.1:8000}
       NAVILA_MOTION: ${NAVILA_MOTION:-false}
       DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
+      DASHBOARD_CAMERA: ${DASHBOARD_CAMERA:-orbbec/color/image_raw/compressed}  # CAMERA=go2|orbbec (Makefile)
     volumes:
       - ./configs:/deictic/configs:ro
       - ./scripts/dashboard:/deictic/dashboard:ro

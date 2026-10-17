@@ -21,7 +21,8 @@ On the Pi: `make .env`, set `DDS_IFACE`, `PI_IP` and `BRIDGE_IP`, then `make pi-
 
 Voice: say "Hey Roxy, walk to that chair" into the mic on the bringup machine; it reaches NaVILA word for word,
 and "stop" ends the episode at once. With `VOICE=true` and `GEMINI_API_KEY` in `.env`, Roxy also tells
-commands from questions and answers aloud through the Pi speaker.
+commands from questions and answers aloud through the Pi speaker, and does tricks on request ("Roxy, sit
+down", "Roxy, dance", "Hi Roxy" waves; [ros_ws/src/tricks](ros_ws/src/tricks/tricks/catalog.py)).
 
 Requires Docker with Compose v2. GPU machines also need `nvidia-container-toolkit`. DDS setup and the
 firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
@@ -37,6 +38,7 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 | `make instruct TEXT="..."` | Give NaVILA an instruction (while `make infer` runs) |
 | `make navila-stop` | End the NaVILA episode, robot holds still |
 | `make robot-stop` | Send the robot a direct StopMove |
+| `make trick NAME=sit` | Make Roxy do a trick (`sit`, `stand_up`, `lie_down`, `hello`, `dance`, ...; no jumps) |
 | `make calibrate` | Measure the robot's real turn (and with `FORWARD=1` walk) speeds, for `configs/robots/roxy.yaml` |
 | `make stt-echo` | Print what the mic hears (`stt/transcript`) while `make collect` / `make infer` runs |
 | `make say TEXT="..."` | Make Roxy speak through the Pi speaker (`VOICE=true`) |
@@ -62,7 +64,7 @@ docker/
   navila/         CUDA + NaVILA server deps; code and weights are mounted
   pi/             arm64 Humble + Orbbec driver (step 2)
   compose/        building blocks (ros.yml, navila.yml) + mode overlays (collect.yml, infer.yml)
-ros_ws/src/       deictic_bringup, deictic_interfaces, audio_stt, voice, recorder, teleop, navila_node
+ros_ws/src/       deictic_bringup, deictic_interfaces, audio_stt, voice, tricks, recorder, teleop, navila_node
 third_party/      NaVILA fork (submodule, pending)
 robot/            pi/ (deictic_pi package + setup guide), jetson/
 data/             gitignored except README.md and schema/

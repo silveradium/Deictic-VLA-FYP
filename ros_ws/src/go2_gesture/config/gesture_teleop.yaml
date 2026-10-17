@@ -1,0 +1,28 @@
+gesture_teleop:
+  ros__parameters:
+    # Camera: the Go2's front camera from the go2_ros2_sdk driver. '' = local webcam below.
+    image_topic: camera/image_raw
+    camera_device: 0          # webcam /dev/videoN, only when image_topic is ''
+    cap_width:     640
+    cap_height:    480
+    mirror: true              # flip horizontally, so left/right match yours when facing the dog
+
+    # Window with the annotated feed (needs DISPLAY); gesture/image is published either way
+    show_window: true
+
+    # MediaPipe detection thresholds
+    min_detection_confidence: 0.7
+    min_tracking_confidence:  0.5
+
+    # Smoothing: the most common gesture over the last N frames is the command.
+    gesture_history_len: 10
+
+    # No commanding gesture for this long: one zero Twist, then cmd_vel is released.
+    no_hand_timeout: 0.5
+
+    # Speed limits (m/s and rad/s), conservative for the real robot
+    max_linear_speed:  0.3
+    max_angular_speed: 0.6
+
+    # cmd_vel publish rate while a gesture is active
+    control_rate: 20.0        # Hz

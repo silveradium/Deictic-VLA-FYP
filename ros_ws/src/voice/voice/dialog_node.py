@@ -4,6 +4,8 @@
   "Hey Roxy, walk to that chair"  -> navigate: navila/instruction "walk to that chair", word for word,
                                      plus a short spoken confirmation
   "Hey Roxy, what's your name?"   -> question: a spoken answer
+  "Roxy, sit down" / "Roxy, dance" -> trick: voice/trick "sit" / "dance" (tricks package, trick_node),
+                                     plus a short spoken confirmation
   navila/instruction "stop"       -> a short spoken "stopping" (wake_router already sent the stop)
 
 Gemini only classifies the request and writes what Roxy says. NaVILA always gets the request as
@@ -26,6 +28,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, String
 
+from tricks.catalog import TRICKS
 from voice.personas import ACKS, OFFLINE, PERSONAS, STOPPING
 
 LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -34,11 +37,12 @@ LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
 SCHEMA = {
     "type": "OBJECT",
     "properties": {
-        "intent": {"type": "STRING", "enum": ["navigate", "question"]},
+        "intent": {"type": "STRING", "enum": ["navigate", "trick", "question"]},
+        "trick": {"type": "STRING", "enum": [*TRICKS, "none"]},
         "question": {"type": "STRING"},
         "reply": {"type": "STRING"},
     },
-    "required": ["intent", "question", "reply"],
+    "required": ["intent", "trick", "question", "reply"],
 }
 
 
@@ -52,6 +56,8 @@ class DialogNode(Node):
         self.history_turns = p("history_turns", 4).value
         timeout = p("gemini_timeout", 15.0).value
         self.speak_timeout = p("speak_timeout", 25.0).value  # unmute if the Pi never reports playback
+        # false without the Pi speaker: replies are only logged and the mic is never muted
+        self.speaker = p("speaker", True).value
 
         self.client = None
         try:
@@ -70,6 +76,8 @@ class DialogNode(Node):
         self.muted = None
 
         self.instruction_pub = self.create_publisher(String, "navila/instruction", 10)
+        self.trick_pub = self.create_publisher(String, "voice/trick", 10)
+        self.trick_t = -1e9  # trick_node stops NaVILA before a trick: don't announce that stop
         self.say_pub = self.create_publisher(String, "voice/say", 10)
         self.qa_pub = self.create_publisher(String, "voice/qa", 10)
         self.mute_pub = self.create_publisher(Bool, "stt/mute", LATCHED)
@@ -88,6 +96,9 @@ class DialogNode(Node):
             self.mute_pub.publish(Bool(data=muted))
 
     def say(self, text):
+        if not self.speaker:
+            self.get_logger().info(f"Roxy (no speaker): {text}")
+            return
         self.speak_t0 = time.monotonic()
         self.set_mute(True)
         self.say_pub.publish(String(data=text))
@@ -115,7 +126,7 @@ class DialogNode(Node):
 
     # ---------------- requests ----------------
     def on_instruction(self, msg):
-        if msg.data.strip().lower() == "stop":
+        if msg.data.strip().lower() == "stop" and time.monotonic() - self.trick_t > 2.0:
             self.say(random.choice(STOPPING[self.preset]))
 
     def on_request(self, msg):
@@ -134,14 +145,18 @@ class DialogNode(Node):
             out = self.ask_gemini(text)
         except Exception as e:
             self.get_logger().error(f"Gemini failed: {e}")
-            out = {"intent": "offline", "question": "", "reply": OFFLINE[self.preset]}
+            out = {"intent": "offline", "trick": "none", "question": "", "reply": OFFLINE[self.preset]}
         self.thinking = False
 
         if out["intent"] == "navigate":
             self.instruction_pub.publish(String(data=text))  # word for word, never Gemini's version
+        elif out["intent"] == "trick":
+            self.trick_t = time.monotonic()
+            self.trick_pub.publish(String(data=out["trick"]))
         if out["intent"] != "offline":
             self.history = (self.history + [{"heard": text, **out}])[-self.history_turns:]
-        self.get_logger().info(f"{out['intent']}: {text!r} -> {out['reply']!r} "
+        intent = f"trick {out['trick']}" if out["intent"] == "trick" else out["intent"]
+        self.get_logger().info(f"{intent}: {text!r} -> {out['reply']!r} "
                                f"({time.monotonic() - t0:.1f} s)")
         self.qa_pub.publish(String(data=json.dumps({"heard": text, **out})))
         self.say(out["reply"])
@@ -153,7 +168,7 @@ class DialogNode(Node):
         contents = []
         for turn in self.history:
             contents.append(types.Content(role="user", parts=[types.Part(text=turn["heard"])]))
-            answer = {k: turn[k] for k in ("intent", "question", "reply")}
+            answer = {k: turn[k] for k in ("intent", "trick", "question", "reply")}
             contents.append(types.Content(role="model", parts=[types.Part(text=json.dumps(answer))]))
         contents.append(types.Content(role="user", parts=[types.Part(text=text)]))
         config = types.GenerateContentConfig(
@@ -182,9 +197,13 @@ class DialogNode(Node):
                 model=self.model, contents=contents, config=config)
 
         out = json.loads(response.text)
-        intent = out.get("intent") if out.get("intent") in ("navigate", "question") else "question"
+        intent = out.get("intent") if out.get("intent") in ("navigate", "trick", "question") else "question"
+        trick = out.get("trick") if out.get("trick") in TRICKS else "none"
+        if intent == "trick" and trick == "none":
+            intent = "question"  # a trick Roxy doesn't have: the reply already says so
         reply = str(out.get("reply", "")).strip() or random.choice(ACKS[self.preset])
-        return {"intent": intent, "question": str(out.get("question", "")).strip(), "reply": reply}
+        return {"intent": intent, "trick": trick, "question": str(out.get("question", "")).strip(),
+                "reply": reply}
 
 
 def main():

@@ -6,7 +6,9 @@ controller (NaVILA text -> closed-loop velocity on odometry) are imported from t
 navila_go2.common, copied into the ROS image, so sim and robot share one implementation.
 
 Instruction: publish std_msgs/String on navila/instruction (`make instruct TEXT="..."`).
-"stop" or an empty string ends the episode and holds still.
+"stop" or an empty string ends the episode and holds still. An exact move ("forward 1 m",
+"go forward 75 cm", "turn left 90", "turn right 45 degrees") runs straight on the mid-level
+controller, without NaVILA: reliable scripted moves and a robot-side self-test.
 
 Velocity goes to cmd_vel, twist_mux priority 5: the joystick (priority 10) always overrides.
 Dry run unless enable_motion is true: commands are logged, not published.
@@ -26,6 +28,7 @@ model's text, the parsed action and latency, then what odometry measured for it.
 import base64
 import json
 import math
+import re
 import time
 
 import cv2
@@ -41,11 +44,40 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
 from navila_go2.common.client import FrameHistory, NaVilaClient, sample_frames
-from navila_go2.common.mid_level import FORWARD, STOP, MidLevelConfig, MidLevelController
+from navila_go2.common.mid_level import (FORWARD, STOP, TURN_LEFT, TURN_RIGHT, MidLevelAction, MidLevelConfig,
+                                         MidLevelController)
 
 SPORT_TOPIC = "rt/api/sport/request"
 STOP_MOVE = 1003  # Unitree sport API: StopMove
 THUMB_SIZE = 192  # px, frames in navila/step
+# Exact moves, the whole instruction: "forward 1 m", "go forward 75 cm and stop", "turn left 90 degrees".
+# Numbers may come from STT as words ("forward one meter").
+NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+                "nine": 9, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "forty-five": 45,
+                "fifty": 50, "sixty": 60, "seventy-five": 75, "ninety": 90, "half a": 0.5, "a": 1}
+_NUM = r"(\d+(?:\.\d+)?|" + "|".join(sorted((re.escape(w) for w in NUMBER_WORDS), key=len, reverse=True)) + ")"
+_TAIL = r"\s*(?:,?\s*(?:and|then)\s+stop)?\s*[.!]?\s*$"
+EXACT_FORWARD = re.compile(r"^\s*(?:(?:go|walk|move)\s+)?forwards?\s+" + _NUM
+                           + r"\s*(m|meters?|metres?|cm|centimet(?:er|re)s?)\b" + _TAIL, re.IGNORECASE)
+EXACT_TURN = re.compile(r"^\s*turn\s+(left|right)\s+(?:by\s+)?" + _NUM
+                        + r"\s*(?:deg|degrees?|°)?" + _TAIL, re.IGNORECASE)
+
+
+def parse_exact_move(text: str):
+    """MidLevelAction for an exact-move instruction, None for anything NaVILA should handle."""
+    def number(tok):
+        tok = tok.lower()
+        return float(NUMBER_WORDS[tok]) if tok in NUMBER_WORDS else float(tok)
+    m = EXACT_FORWARD.match(text)
+    if m:
+        dist = number(m.group(1)) / (100.0 if m.group(2).lower().startswith("c") else 1.0)
+        return MidLevelAction(FORWARD, dist, text) if 0 < dist <= 5.0 else None
+    m = EXACT_TURN.match(text)
+    if m:
+        deg = number(m.group(2))
+        kind = TURN_LEFT if m.group(1).lower() == "left" else TURN_RIGHT
+        return MidLevelAction(kind, deg, text) if 0 < deg <= 360 else None
+    return None
 
 
 def thumbnail(rgb: np.ndarray) -> str:
@@ -62,12 +94,19 @@ def image_to_rgb(msg: Image) -> np.ndarray:
 
 
 def to_navila_view(rgb: np.ndarray, mode: str, size: int = 512) -> np.ndarray:
-    """NaVILA squares every frame. crop: center square (no distortion; preferred in the sim tests),
-    squash: whole frame squeezed to a square."""
+    """NaVILA squares every frame (trained on 512x512, 90 deg HFOV).
+    crop:   center square (no distortion, but narrower: ~55 deg on the 69 deg Orbbec)
+    squash: whole frame squeezed to a square (full width, stretched vertically)
+    pad:    whole frame letterboxed onto a black square (full width, undistorted)"""
+    h, w = rgb.shape[:2]
     if mode == "crop":
-        h, w = rgb.shape[:2]
         s = min(h, w)
         rgb = rgb[(h - s) // 2 : (h + s) // 2, (w - s) // 2 : (w + s) // 2]
+    elif mode == "pad":
+        s = max(h, w)
+        square = np.zeros((s, s, 3), dtype=rgb.dtype)
+        square[(s - h) // 2 : (s - h) // 2 + h, (s - w) // 2 : (s - w) // 2 + w] = rgb
+        rgb = square
     return cv2.resize(rgb, (size, size), interpolation=cv2.INTER_AREA)
 
 
@@ -91,6 +130,9 @@ class NavilaNode(Node):
             ("min_lin_speed", 0.15),
             ("min_ang_speed_deg", 9.0),
             ("timeout_factor", 3.0),
+            # True: Habitat-style heading grid (sim); false on the real robot: each action from the current yaw
+            ("carry_heading", True),
+            ("max_hold_ang_speed_deg", 0.0),  # cap on the forward heading-hold; 0 = ang_speed_deg
             ("max_lin", 0.5),
             ("max_ang", 0.8),
             ("max_actions", 60),
@@ -108,6 +150,8 @@ class NavilaNode(Node):
             min_lin_speed=self.cfg["min_lin_speed"],
             min_ang_speed=math.radians(self.cfg["min_ang_speed_deg"]),
             timeout_factor=self.cfg["timeout_factor"],
+            carry_heading=self.cfg["carry_heading"],
+            max_hold_ang_speed=math.radians(self.cfg["max_hold_ang_speed_deg"]) or None,
         ))
         self.history = FrameHistory()
         self.frame, self.frame_t = None, 0.0
@@ -119,6 +163,8 @@ class NavilaNode(Node):
         self.units_recorded = 0
         self.moving = False  # last published command was non-zero
         self.action_t0 = 0.0
+        self.exact = None  # an exact move waiting to start (no NaVILA)
+        self.exact_running = False
 
         self.cmd_pub = self.create_publisher(Twist, self.cfg["cmd_topic"], 10)
         self.decision_pub = self.create_publisher(String, "navila/decision", 10)
@@ -149,10 +195,14 @@ class NavilaNode(Node):
         text = msg.data.strip()
         self.ctrl.active = False
         self.future = None  # a reply still in flight is ignored
+        self.exact, self.exact_running = None, False
         if not text or text.lower() == "stop":
             self.instruction, self.mode = None, "done"
             self.get_logger().info("stopped by instruction")
             self.emit("stopped")
+        elif parse_exact_move(text) is not None:
+            self.exact, self.instruction, self.mode = parse_exact_move(text), None, "exact"
+            self.get_logger().info(f"exact move: {self.exact} (no NaVILA)")
         else:
             self.instruction, self.mode = text, "idle"  # restarts in tick()
 
@@ -194,9 +244,24 @@ class NavilaNode(Node):
         """Explicit stop: zero velocities never reach the robot (the driver drops them)."""
         self.webrtc_pub.publish(WebRtcReq(topic=SPORT_TOPIC, api_id=STOP_MOVE, parameter="", priority=1))
 
+    def start_exact(self):
+        action, self.exact = self.exact, None
+        self.emit("instruction", text=action.text, exact=True)
+        self.ctrl.reset_heading(self.pose[2])
+        self.n_actions = 1
+        self.emit("decision", n=1, instruction=action.text, text="exact move (no NaVILA)", action=str(action),
+                  kind=action.kind, value=action.value, latency_s=0.0, roundtrip_s=0.0, frames=[])
+        self.ctrl.start(action, self.pose)
+        self.units_recorded = 0
+        self.action_t0 = time.time()
+        self.exact_running = True
+        self.mode = "executing"
+
     def log_outcome(self):
         a, c = self.ctrl.action, self.ctrl
-        asked, done, unit = (a.value * 100, c.progress * 100, "cm") if a.kind == FORWARD else (a.value, c.progress, "deg")
+        # target: what the controller actually aimed for (differs from NaVILA's value with carry_heading)
+        asked, done, unit = ((c.target * 100, c.progress * 100, "cm") if a.kind == FORWARD
+                             else (c.target, c.progress, "deg"))
         self.get_logger().info(
             f"   done {a}: measured {done:.0f} {unit} of {asked:.0f} in {time.time() - self.action_t0:.1f}s"
             + ("  TIMED OUT" if c.timed_out else ""))
@@ -215,6 +280,8 @@ class NavilaNode(Node):
             return
         if self.mode == "idle" and self.instruction:
             self.start_episode()
+        if self.mode == "exact" and self.exact is not None:
+            self.start_exact()
 
         if self.mode == "thinking" and self.future is not None and self.future.done():
             fut, self.future = self.future, None
@@ -251,7 +318,12 @@ class NavilaNode(Node):
                 self.units_recorded += 1
             if not self.ctrl.active:
                 self.log_outcome()
-                self.query()
+                if self.exact_running:
+                    self.exact_running, self.mode = False, "done"
+                    self.get_logger().info("exact move finished")
+                    self.emit("finished", n=1)
+                else:
+                    self.query()
         # publish every tick (zeros too): twist_mux drops the input after 0.5 s of silence
         self.publish(*cmd)
 

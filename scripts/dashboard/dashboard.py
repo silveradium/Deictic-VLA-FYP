@@ -9,7 +9,8 @@ Three tabs (static/index.html):
   Logs   readable logs per machine: laptop and Pi from /rosout, the NaVILA server from its /health and
          the requests
 
-Sources: orbbec/color/image_raw/compressed (served as MJPEG, never decoded), stt/transcript, stt/request,
+Sources: the camera (DASHBOARD_CAMERA, set from CAMERA=go2|orbbec by the Makefile: the Orbbec's JPEG
+stream is served as MJPEG as is, the Go2's raw frames are JPEG-encoded here), stt/transcript, stt/request,
 voice/qa (Gemini's intent + reply), voice/speaking, navila/step (navila_node, JSON), odom (rate only),
 /rosout, and NAVILA_SERVER_URL/health. The page gets events over Server-Sent Events (/events) and a
 snapshot of recent history on load (/state).
@@ -31,11 +32,12 @@ from nav_msgs.msg import Odometry
 from rcl_interfaces.msg import Log
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
-from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
 
 STATIC = Path(__file__).parent / "static"
-CAMERA = "orbbec/color/image_raw/compressed"
+CAMERA = os.environ.get("DASHBOARD_CAMERA") or "orbbec/color/image_raw/compressed"
+RAW_FPS = 10.0  # raw camera: frames JPEG-encoded per second at most
 RATE_WINDOW = 3.0  # s
 # /rosout node names that run on the Pi (robot/pi); everything else runs on the bringup laptop
 PI_NODES = ("orbbec", "speaker_node", "camera")
@@ -93,7 +95,11 @@ class Dashboard(Node):
         self.server = {"ok": False, "error": "not checked yet"}
         self.up = {"camera": None, "odom": None}  # last reported state, for plain-language status lines
 
-        self.create_subscription(CompressedImage, CAMERA, self.on_camera, qos_profile_sensor_data)
+        if CAMERA.endswith("/compressed"):
+            self.create_subscription(CompressedImage, CAMERA, self.on_camera, qos_profile_sensor_data)
+        else:
+            self.raw_t = 0.0
+            self.create_subscription(Image, CAMERA, self.on_raw_camera, qos_profile_sensor_data)
         self.create_subscription(Odometry, "odom", lambda _: self.tick("odom"), 10)
         self.create_subscription(String, "stt/transcript", self.on_transcript, 10)
         self.create_subscription(String, "stt/request", self.on_request, 10)
@@ -122,6 +128,23 @@ class Dashboard(Node):
         with self.jpeg_cond:
             self.jpeg = bytes(msg.data)
             self.jpeg_cond.notify_all()
+
+    def on_raw_camera(self, msg):
+        now = time.monotonic()
+        if now - self.raw_t < 1.0 / RAW_FPS:
+            self.tick("camera")
+            return
+        self.raw_t = now
+        import cv2
+        import numpy as np
+        img = np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step)[:, :msg.width * 3]
+        img = img.reshape(msg.height, msg.width, 3)
+        if msg.encoding == "rgb8":
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ok:
+            msg = CompressedImage(data=jpg.tobytes())
+            self.on_camera(msg)
 
     def on_transcript(self, msg):
         if msg.data.strip():

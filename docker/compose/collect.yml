@@ -1,5 +1,6 @@
 # Mode overlay for `make collect` (with ros.yml): Go2 bridge + joystick teleop.
-# Recorder joins in build step 4. Mic STT runs unless STT=false. Camera topics come from the Pi.
+# Recorder joins in build step 4. Mic STT runs unless STT=false. GESTURE=true adds hand-gesture
+# driving on the Go2 camera (go2_gesture).
 services:
   bringup:
-    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} mic:=${MIC:-dji} voice:=${VOICE:-false}
+    command: ros2 launch deictic_bringup bringup.launch.py mode:=collect stt:=${STT:-true} mic:=${MIC:-dji} voice:=${VOICE:-false} speaker:=${SPEAKER:-true} gesture:=${GESTURE:-false} orbbec:=${ORBBEC:-true}

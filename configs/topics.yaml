@@ -21,7 +21,7 @@ go2:  # go2_ros2_sdk driver, on the workstation or laptop (WebRTC to the robot)
 
 cmd:  # velocity chain: twist_mux picks the highest-priority live input
   cmd_vel_joy:       {type: geometry_msgs/msg/Twist, qos: reliable, from: go2_teleop_node, note: joystick, twist_mux priority 10}
-  cmd_vel:           {type: geometry_msgs/msg/Twist, qos: reliable, from: navila_node,     note: infer mode (enable_motion), twist_mux priority 5, 0.5 s timeout}
+  cmd_vel:           {type: geometry_msgs/msg/Twist, qos: reliable, from: navila_node / gesture_teleop, note: infer mode (enable_motion) or a hand gesture in view (gesture:=true), twist_mux priority 5, 0.5 s timeout}
   cmd_vel_out:       {type: geometry_msgs/msg/Twist, qos: reliable, from: twist_mux,       note: the only velocity input the driver reads}
   joy:               {type: sensor_msgs/msg/Joy,     qos: reliable, from: joy_node}
 
@@ -47,5 +47,12 @@ voice:  # spoken replies (ros_ws/src/voice on the bringup machine, speaker on th
   voice/audio:    {type: std_msgs/msg/UInt8MultiArray, qos: reliable, from: tts_node, note: 'one complete WAV file per line, ~50-250 KB'}
   voice/speaking: {type: std_msgs/msg/Bool,            qos: latched,  from: Pi speaker_node, note: true while the Pi speaker plays}
   voice/preset:   {type: std_msgs/msg/String,          qos: latched,  from: tts_node, note: 'scooby | robot; dialog_node talks in the matching style'}
+  voice/trick:    {type: std_msgs/msg/String,          qos: reliable, from: dialog_node / make trick, note: 'a trick name from tricks/catalog.py; trick_node sends it to webrtc_req'}
+
+gesture:  # hand-gesture driving (go2_gesture) with gesture:=true
+  gesture/image:  {type: sensor_msgs/msg/Image, qos: best_effort, from: gesture_teleop, note: 'Go2 camera, mirrored, with the hand box, the sign and the cmd_vel being sent'}
+
+go2_req:  # direct Unitree API calls through the WebRTC bridge
+  webrtc_req:     {type: go2_interfaces/msg/WebRtcReq, qos: reliable, from: trick_node / navila_node / make robot-stop, note: 'sport API on rt/api/sport/request (api_id, e.g. 1009 Sit)'}
 
 # episode: recorder start/stop markers. Added in build step 4 (deictic_interfaces).
