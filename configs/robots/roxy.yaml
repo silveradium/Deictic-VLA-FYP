@@ -80,6 +80,9 @@ trick_node:
 
 tts_node:
   ros__parameters:
-    voice_preset: robot               # scooby | robot; `make voice-preset PRESET=robot` while running
-    piper_voice: en_US-ryan-medium     # downloaded into the ROS image (docker/ros/Dockerfile)
+    # Roxy's voice: a name from ros_ws/src/voice/voice/voice_library.py (scooby, robot, poppy-bright, ...);
+    # `make voice-preset PRESET=...` while running. A voice picked in the dashboard's Voice tab
+    # (data/voice/roxy_voice.json) wins over this while the dashboard runs.
+    voice_preset: robot
+    piper_voice: en_US-ryan-medium     # fallback for a voice whose Piper model isn't in the image
     piper_voices_dir: /opt/piper-voices

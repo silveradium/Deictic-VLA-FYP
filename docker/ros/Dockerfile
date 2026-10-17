@@ -75,6 +75,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     env -u PIP_NO_CACHE_DIR pip3 install "numpy<2" mediapipe ai-edge-litert
 
+# The other Piper voices behind the dashboard's 100 robot voices (voice/voice_library.py, BASES),
+# ~550 MB. Its own layer, so changing the list doesn't reinstall anything above.
+RUN python3 -m piper.download_voices --data-dir /opt/piper-voices \
+        en_US-amy-medium en_US-lessac-medium en_US-kristin-medium en_US-hfc_female-medium \
+        en_GB-jenny_dioco-medium en_GB-semaine-medium en_US-arctic-medium en_GB-vctk-medium
+
 # --- our packages overlay ---
 WORKDIR /ros2_ws
 COPY ros_ws/src src

@@ -3,11 +3,15 @@
   make demo-site        starts it with the rest (http://localhost:8080)
   make dashboard        just this, next to a stack that is already running
 
-Three tabs (static/index.html):
-  Live   for viewers: the Orbbec stream, what was heard, where it went (Gemini or NaVILA), the decision
+Four tabs (static/index.html):
+  Live   for viewers: the Orbbec stream, what was heard, where it went (Gemini or NaVILA), the decision,
+         and a text box for when the hall is too loud for the mic (stt/typed, wake_router)
   VLA    every NaVILA request: the 8 frames actually sent, the model's text, the action, what the robot did
   Logs   readable logs per machine: laptop and Pi from /rosout, the NaVILA server from its /health and
          the requests
+  Voice  Roxy's voice lab: 100 robot voices (ros_ws/src/voice/voice/voice_library.py) and knobs for
+         pitch, speed and effects, played here in the browser or on Roxy's speaker. "Use as Roxy's
+         voice" sends it to tts_node (voice/config) and keeps it in data/voice/roxy_voice.json
 
 Sources: the camera (DASHBOARD_CAMERA, set from CAMERA=go2|orbbec by the Makefile: the Orbbec's JPEG
 stream is served as MJPEG as is, the Go2's raw frames are JPEG-encoded here), stt/transcript, stt/request,
@@ -39,6 +43,9 @@ STATIC = Path(__file__).parent / "static"
 CAMERA = os.environ.get("DASHBOARD_CAMERA") or "orbbec/color/image_raw/compressed"
 RAW_FPS = 10.0  # raw camera: frames JPEG-encoded per second at most
 RATE_WINDOW = 3.0  # s
+VOICE_FILE = Path(os.environ.get("DASHBOARD_VOICE_FILE") or "/deictic/data/voice/roxy_voice.json")
+PIPER_VOICES = os.environ.get("PIPER_VOICES_DIR") or "/opt/piper-voices"
+MAX_TEXT = 400  # characters per typed or tested line
 # /rosout node names that run on the Pi (robot/pi); everything else runs on the bringup laptop
 PI_NODES = ("orbbec", "speaker_node", "camera")
 # repeated noise that only hides the useful lines
@@ -110,6 +117,27 @@ class Dashboard(Node):
         self.create_timer(1.0, self.push_status)
         threading.Thread(target=self.poll_server, daemon=True).start()
 
+        # typing to Roxy and the voice lab
+        self.typed_pub = self.create_publisher(String, "stt/typed", 10)
+        self.instruction_pub = self.create_publisher(String, "navila/instruction", 10)
+        self.speak_pub = self.create_publisher(String, "voice/speak", 10)
+        self.voice_pub = self.create_publisher(String, "voice/config", LATCHED)
+        self.typed = ("", 0.0)  # last typed request, to label it when wake_router echoes it on stt/request
+        self.voice = None  # {"label", "spec"}: Roxy's voice as chosen here
+        try:
+            from voice import voice_fx, voice_library
+            self.fx, self.library = voice_fx, voice_library
+            self.voices = voice_fx.Voices(PIPER_VOICES, keep=2)
+            self.render_lock = threading.Lock()
+        except Exception as e:  # not the ROS image: the Voice tab says so
+            self.fx = self.library = None
+            self.get_logger().warn(f"voice lab off: {e}")
+        if VOICE_FILE.is_file():
+            try:
+                self.use_voice(json.loads(VOICE_FILE.read_text()), save=False)
+            except (ValueError, KeyError, TypeError) as e:
+                self.get_logger().warn(f"ignoring {VOICE_FILE}: {e}")
+
     # ---------------- inputs ----------------
     def tick(self, name):
         q, now = self.recent[name], time.time()
@@ -151,8 +179,10 @@ class Dashboard(Node):
             self.hub.publish("heard", {"t": time.time(), "text": msg.data.strip(), "wake": False})
 
     def on_request(self, msg):
-        # wake_router: what followed "Hey Roxy" (empty = only the wake phrase)
-        self.hub.publish("heard", {"t": time.time(), "text": msg.data.strip(), "wake": True})
+        # wake_router: what followed "Hey Roxy" (empty = only the wake phrase), or a typed request
+        text = msg.data.strip()
+        typed = bool(text) and text == self.typed[0].strip(" ,.!?;:-") and time.time() - self.typed[1] < 5.0
+        self.hub.publish("heard", {"t": time.time(), "text": text, "wake": True, "typed": typed})
 
     def on_qa(self, msg):
         try:
@@ -235,7 +265,51 @@ class Dashboard(Node):
         self.watch_links()
         self.hub.publish("status", {"camera_fps": self.rate("camera"), "odom_hz": self.rate("odom"),
                                     "speaking": self.speaking, "server": self.server, "motion": self.motion,
-                                    "server_url": self.server_url}, keep=False)
+                                    "server_url": self.server_url,
+                                    "typing": self.count_subscribers("stt/typed") > 0,
+                                    "tts": self.count_subscribers("voice/config") > 0,
+                                    "voice": self.voice}, keep=False)
+
+    # ---------------- typing and the voice lab (HTTP handlers call these) ----------------
+    def type_request(self, text):
+        if self.count_subscribers("stt/typed") == 0:
+            raise RuntimeError("nothing is listening: is the bringup stack running?")
+        self.typed = (text, time.time())
+        self.typed_pub.publish(String(data=text))
+
+    def stop(self):
+        self.instruction_pub.publish(String(data="stop"))
+
+    def speak(self, text, spec=None):
+        """Say one line on Roxy's speaker: in `spec`, or Roxy's own voice for None."""
+        if self.count_subscribers("voice/speak") == 0:
+            raise RuntimeError("Roxy's speaker voice is off: start with VOICE=true and the Pi up")
+        self.speak_pub.publish(String(data=json.dumps({"text": text, "voice": spec})))
+
+    def use_voice(self, cfg, save=True):
+        cfg = {"label": str(cfg.get("label") or "custom")[:80], "spec": self.fx.full(cfg["spec"])
+               if self.fx else cfg["spec"]}
+        self.voice = cfg
+        self.voice_pub.publish(String(data=json.dumps(cfg)))
+        if save:
+            VOICE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            VOICE_FILE.write_text(json.dumps(cfg, indent=1))
+        self.get_logger().info(f"Roxy's voice -> {cfg['label']}")
+
+    def voice_catalog(self):
+        if not self.fx:
+            return {"ok": False, "error": "voice packages missing (run the dashboard in the ROS image)"}
+        installed = set(self.voices.installed())
+        voices = [{"name": k, **v, "installed": v["spec"]["model"] in installed}
+                  for k, v in self.library.LIBRARY.items()]
+        bases = [{"label": b[0], "model": b[1], "speaker": b[2], "installed": b[1] in installed}
+                 for b in self.library.BASES]
+        return {"ok": True, "voices": voices, "bases": bases, "defaults": self.fx.DEFAULTS,
+                "current": self.voice, "installed": sorted(installed)}
+
+    def render_preview(self, text, spec):
+        with self.render_lock:  # one at a time: the laptop also runs speech recognition
+            return self.fx.render(self.voices, text, spec)
 
 
 def make_handler(node, hub):
@@ -251,8 +325,44 @@ def make_handler(node, hub):
             self.end_headers()
             self.wfile.write(data)
 
+        def send_json(self, obj, status=200):
+            self.send_bytes(json.dumps(obj).encode(), "application/json", status)
+
+        def do_POST(self):
+            path = self.path.split("?")[0]
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(min(length, 100_000)) or b"{}")
+                text = " ".join(str(body.get("text", "")).split())[:MAX_TEXT]
+                if path == "/api/type":
+                    if not text:
+                        return self.send_json({"ok": False, "error": "empty"}, 400)
+                    node.type_request(text)
+                elif path == "/api/stop":
+                    node.stop()
+                elif path == "/api/speak":  # a line on Roxy's speaker: Roxy's voice, or a test voice
+                    if not text:
+                        return self.send_json({"ok": False, "error": "empty"}, 400)
+                    node.speak(text, body.get("spec"))
+                elif path == "/api/voice/use":
+                    node.use_voice({"label": body.get("label"), "spec": body["spec"]})
+                elif path == "/api/voice/preview":  # rendered here, played in the browser
+                    if not node.fx:
+                        return self.send_json({"ok": False, "error": "voice lab off"}, 503)
+                    wav = node.render_preview(text or "Hello.", body.get("spec") or {})
+                    return self.send_bytes(wav or b"", "audio/wav")
+                else:
+                    return self.send_json({"ok": False, "error": "not found"}, 404)
+            except (ValueError, KeyError, TypeError) as e:
+                return self.send_json({"ok": False, "error": f"bad request: {e}"}, 400)
+            except Exception as e:
+                return self.send_json({"ok": False, "error": str(e)[:300]}, 503)
+            self.send_json({"ok": True})
+
         def do_GET(self):
             path = self.path.split("?")[0]
+            if path == "/api/voices":
+                return self.send_json(node.voice_catalog())
             if path == "/stream.mjpg":
                 return self.stream()
             if path == "/events":

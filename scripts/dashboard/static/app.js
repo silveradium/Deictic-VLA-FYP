@@ -24,10 +24,14 @@ function showTab(name) {
   document.querySelectorAll("#view-vla img[data-src]").forEach((img) => {
     img.src = name === "vla" ? img.dataset.src : "";
   });
+  if (name === "voice") queueMicrotask(loadVoices);  // after the whole script has run
   try { localStorage.setItem("roxy-tab", name); } catch (_) { /* storage blocked */ }
 }
 tabs.forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab)));
-try { const saved = localStorage.getItem("roxy-tab"); if (saved) showTab(saved); } catch (_) { /* storage blocked */ }
+// #voice etc. in the URL opens that tab (a bookmark for the operator), else the last one used
+const hashTab = location.hash.slice(1);
+if ($(`view-${hashTab}`)) showTab(hashTab);
+else try { const saved = localStorage.getItem("roxy-tab"); if (saved) showTab(saved); } catch (_) { /* storage blocked */ }
 
 // logos: a missing file becomes a text badge (drop PNGs into static/logos/)
 document.querySelectorAll(".logos img").forEach((img) => {
@@ -51,7 +55,9 @@ function onHeard(e) {
   if (!e.text) return;
   // a sentence addressed to Roxy is bold white; background speech stays grey
   $("heard-text").innerHTML = e.wake ? `<q>${esc(e.text)}</q>` : `<span class="muted">${esc(e.text)}</span>`;
-  $("heard-meta").innerHTML = (e.wake ? '<span class="chip wake">Hey Roxy</span>' : '<span class="chip">background</span>')
+  const chip = e.typed ? '<span class="chip typed">typed</span>'
+    : e.wake ? '<span class="chip wake">Hey Roxy</span>' : '<span class="chip">background</span>';
+  $("heard-meta").innerHTML = chip
     + `<span>${clock(e.t)}</span>`;
 }
 
@@ -263,7 +269,299 @@ function onStatus(e) {
   const mode = $("st-mode");
   mode.classList.toggle("live", !!e.motion);
   mode.querySelector("b").textContent = e.motion ? "MOTION ON" : "DRY RUN";
+  lastStatus = e;
+  if (!typeBusy) $("type-status").textContent = e.typing ? "" : "bringup not running";
+  $("voice-current").textContent = e.voice ? e.voice.label : "from roxy.yaml (tts_node voice_preset)";
+  $("play-roxy").disabled = !e.tts;
+  $("type-say").disabled = !e.tts;
 }
+let lastStatus = {};
+
+// ---------------- typing to Roxy (a hall too noisy for the mic) ----------------
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try { msg = (await r.json()).error || msg; } catch (_) { /* not JSON */ }
+    throw new Error(msg);
+  }
+  return r;
+}
+
+let typeBusy = false;
+const typed = [];  // sent lines, newest last: ↑ / ↓ in the box
+let typedAt = 0;
+function typeNote(text, bad) {
+  typeBusy = true;
+  const el = $("type-status");
+  el.textContent = text;
+  el.classList.toggle("bad", !!bad);
+  clearTimeout(typeNote.t);
+  typeNote.t = setTimeout(() => { typeBusy = false; el.textContent = ""; el.classList.remove("bad"); }, 4000);
+}
+async function typeSend(path, okText) {
+  const box = $("type-text"), text = box.value.trim();
+  if (!text) return box.focus();
+  try {
+    await post(path, { text });
+    if (typed[typed.length - 1] !== text) typed.push(text);
+    typedAt = typed.length;
+    box.value = "";
+    typeNote(okText);
+  } catch (err) { typeNote(err.message, true); }
+  box.focus();
+}
+$("type-form").addEventListener("submit", (ev) => { ev.preventDefault(); typeSend("api/type", "sent"); });
+$("type-say").addEventListener("click", () => typeSend("api/speak", "speaking"));
+$("type-stop").addEventListener("click", async () => {
+  try { await post("api/stop"); typeNote("stop sent"); } catch (err) { typeNote(err.message, true); }
+});
+$("type-text").addEventListener("keydown", (ev) => {
+  if (ev.key !== "ArrowUp" && ev.key !== "ArrowDown") return;
+  ev.preventDefault();
+  typedAt = Math.max(0, Math.min(typed.length, typedAt + (ev.key === "ArrowUp" ? -1 : 1)));
+  ev.target.value = typed[typedAt] ?? "";
+});
+
+// ---------------- voice lab ----------------
+// ~10 words each, and never "Roxy": laptop speakers playing it could wake her through the mic
+const SENTENCES = [
+  "Hello everyone, welcome to our stand, I am a robot dog.",
+  "Point anywhere you like and tell me where to go.",
+  "Beep boop, my sensors say you look amazing today, friend.",
+  "Ask me a question, or tell me to sit down.",
+  "Watch me walk over there and sit down for you.",
+];
+// [key, label, min, max, step, shown as]
+const KNOBS = [
+  ["pitch", "Pitch", -600, 1400, 25, (v) => `${v > 0 ? "+" : ""}${(v / 100).toFixed(1)} semitones`],
+  ["rate", "Speed", 0.6, 1.6, 0.01, (v) => `${v.toFixed(2)}×`],  // spec.speed = 1 / rate (Piper length)
+  ["ring_hz", "Ring mod", 0, 300, 1, (v) => v ? `${v} Hz` : "off"],
+  ["ring_mix", "Ring mix", 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`],
+  ["bits", "Bit-crush", 0, 12, 1, (v) => v ? `${v} bits` : "off"],
+  ["overdrive", "Overdrive", 0, 20, 1, (v) => v ? `${v} dB` : "off"],
+  ["bass", "Bass", -15, 15, 1, (v) => `${v > 0 ? "+" : ""}${v} dB`],
+  ["echo_ms", "Echo", 0, 120, 1, (v) => v ? `${v} ms` : "off"],
+  ["tremolo_hz", "Wobble", 0, 15, 0.5, (v) => v ? `${v} Hz` : "off"],
+  ["tremolo_depth", "Wobble depth", 0, 100, 5, (v) => `${v}%`],
+];
+const TOGGLES = [["punch", "Cut through noise"], ["flanger", "Flanger"], ["chorus", "Chorus"]];
+
+const lab = { voices: [], byName: {}, bases: [], defaults: {}, name: null, spec: null, tuned: false,
+  style: "All", search: "", audio: null, cache: new Map(), loaded: false };
+let favs = new Set();
+try { favs = new Set(JSON.parse(localStorage.getItem("roxy-fav") || "[]")); } catch (_) { /* storage blocked */ }
+function saveFavs() { try { localStorage.setItem("roxy-fav", JSON.stringify([...favs])); } catch (_) { /* storage blocked */ } }
+
+function voiceMsg(text, bad) {
+  const el = $("voice-msg");
+  el.textContent = text;
+  el.classList.toggle("bad", !!bad);
+}
+
+$("test-text").value = SENTENCES[0];
+$("test-another").addEventListener("click", () => {
+  const i = SENTENCES.indexOf($("test-text").value);
+  $("test-text").value = SENTENCES[(i + 1) % SENTENCES.length];
+});
+
+async function loadVoices() {
+  if (lab.loaded) return;
+  try {
+    const c = await (await fetch("api/voices")).json();
+    if (!c.ok) throw new Error(c.error);
+    lab.loaded = true;
+    Object.assign(lab, { voices: c.voices, bases: c.bases, defaults: c.defaults });
+    lab.voices.forEach((v) => { lab.byName[v.name] = v; });
+    $("voice-count").textContent = lab.voices.filter((v) => v.n).length;
+    buildKnobs();
+    const styles = ["All", "★", ...new Set(lab.voices.map((v) => v.style))];
+    $("voice-style").innerHTML = styles.map((st) => `<button data-style="${esc(st)}" class="${st === "All" ? "on" : ""}">${esc(st)}</button>`).join("");
+    $("voice-style").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => {
+      lab.style = b.dataset.style;
+      $("voice-style").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+      renderList();
+    }));
+    renderList();
+    const cur = c.current;
+    const match = cur && lab.voices.find((v) => v.label === cur.label);
+    if (match) pick(match.name, false);
+    else if (cur) setSpec(cur.spec, null, cur.label);
+    else pick(lab.voices[0].name, false);
+  } catch (err) {
+    $("voice-list").innerHTML = `<li class="empty">Voice lab unavailable: ${esc(err.message)}</li>`;
+  }
+}
+
+function shown() {
+  const q = lab.search;
+  return lab.voices.filter((v) => (lab.style === "All" || (lab.style === "★" ? favs.has(v.name) : v.style === lab.style))
+    && (!q || `${v.n} ${v.label} ${v.style} ${v.spec.model}`.toLowerCase().includes(q)));
+}
+
+function renderList() {
+  const list = $("voice-list"), items = shown();
+  if (!items.length) {
+    list.innerHTML = `<li class="empty">${lab.style === "★" ? "Star voices you like to list them here" : "No voice matches"}</li>`;
+    return;
+  }
+  list.innerHTML = items.map((v) => `<li data-name="${esc(v.name)}" class="${v.name === lab.name ? "on" : ""}${v.installed ? "" : " missing"}">
+      <span class="vn">${v.n ? String(v.n).padStart(3, "0") : "—"}</span>
+      <span class="vl">${esc(v.label)}${v.installed ? "" : '<small>model not in this image: make build-ros</small>'}</span>
+      <span class="chip">${esc(v.style)}</span>
+      <button class="star${favs.has(v.name) ? " on" : ""}" data-star title="Favourite">★</button>
+      <button class="vplay" data-play title="Play">▶</button></li>`).join("");
+  list.querySelectorAll("li[data-name]").forEach((li) => li.addEventListener("click", (ev) => {
+    const name = li.dataset.name;
+    if (ev.target.closest("[data-star]")) {
+      favs.has(name) ? favs.delete(name) : favs.add(name);
+      saveFavs();
+      return renderList();
+    }
+    pick(name, ev.target.closest("[data-play]") || $("autoplay").checked);
+  }));
+}
+$("voice-search").addEventListener("input", (ev) => { lab.search = ev.target.value.trim().toLowerCase(); renderList(); });
+
+function pick(name, play) {
+  const v = lab.byName[name];
+  if (!v) return;
+  setSpec(v.spec, name);
+  lab.name = name;
+  document.querySelectorAll("#voice-list li").forEach((li) => li.classList.toggle("on", li.dataset.name === name));
+  document.querySelector(`#voice-list li[data-name="${CSS.escape(name)}"]`)?.scrollIntoView({ block: "nearest" });
+  if (play) playHere();
+}
+
+function setSpec(spec, name, label) {
+  lab.spec = { ...lab.defaults, ...spec };
+  lab.name = name;
+  lab.tuned = false;
+  lab.label = label || null;
+  syncKnobs();
+  showPicked();
+}
+
+function currentLabel() {
+  const v = lab.byName[lab.name];
+  const base = v ? v.label : (lab.label || "Custom voice");
+  return lab.tuned ? `${base} (tuned)` : base;
+}
+function showPicked() {
+  const v = lab.byName[lab.name];
+  $("picked").innerHTML = `<b>${esc(currentLabel())}</b>${v && v.n ? ` <span class="muted">#${v.n} of 100</span>` : ""}`;
+}
+
+function buildKnobs() {
+  $("knob-base").innerHTML = lab.bases.map((b) => `<option value="${esc(b.model)}#${b.speaker}"${b.installed ? "" : " disabled"}>
+    ${esc(b.label)} · ${esc(b.model.replace(/-medium$/, ""))}${b.installed ? "" : " (not installed)"}</option>`).join("");
+  $("knob-grid").innerHTML = KNOBS.map(([k, label, min, max, step]) => `<label class="knob">
+      <span class="kl">${label}<b id="kv-${k}"></b></span>
+      <input type="range" id="knob-${k}" min="${min}" max="${max}" step="${step}"></label>`).join("");
+  $("knob-toggles").innerHTML = TOGGLES.map(([k, label]) =>
+    `<label class="toggle"><input type="checkbox" id="knob-${k}"> ${label}</label>`).join("");
+  KNOBS.forEach(([k]) => $(`knob-${k}`).addEventListener("input", (ev) => tune(k, Number(ev.target.value))));
+  TOGGLES.forEach(([k]) => $(`knob-${k}`).addEventListener("change", (ev) => tune(k, ev.target.checked)));
+  $("knob-base").addEventListener("change", (ev) => {
+    const [model, speaker] = ev.target.value.split("#");
+    tune("model", model);
+    tune("speaker", Number(speaker));
+  });
+  $("knob-persona").addEventListener("change", (ev) => tune("persona", ev.target.value));
+}
+
+function syncKnobs() {
+  const s = lab.spec;
+  KNOBS.forEach(([k, , , , , fmt]) => {
+    const v = k === "rate" ? 1 / s.speed : s[k];
+    $(`knob-${k}`).value = v;
+    $(`kv-${k}`).textContent = fmt(Number($(`knob-${k}`).value));
+  });
+  TOGGLES.forEach(([k]) => { $(`knob-${k}`).checked = !!s[k]; });
+  const opt = `${s.model}#${s.speaker}`;
+  if (![...$("knob-base").options].some((o) => o.value === opt)) {
+    $("knob-base").insertAdjacentHTML("beforeend", `<option value="${esc(opt)}">${esc(s.model)} #${s.speaker}</option>`);
+  }
+  $("knob-base").value = opt;
+  $("knob-persona").value = s.persona;
+}
+
+let tunePlay = null;
+function tune(key, value) {
+  if (key === "rate") {
+    lab.spec.speed = Math.round(1000 / value) / 1000;
+  } else lab.spec[key] = value;
+  const knob = KNOBS.find(([k]) => k === key);
+  if (knob) $(`kv-${key}`).textContent = knob[5](value);
+  lab.tuned = true;
+  showPicked();
+  // hear a change half a second after the last slider move
+  clearTimeout(tunePlay);
+  if ($("autoplay").checked) tunePlay = setTimeout(playHere, 500);
+}
+$("voice-reset").addEventListener("click", () => {
+  if (lab.name) pick(lab.name, $("autoplay").checked);
+});
+
+function testText() {
+  return $("test-text").value.trim() || SENTENCES[0];
+}
+
+async function playHere() {
+  if (!lab.spec) return;
+  const text = testText(), key = JSON.stringify([text, lab.spec]);
+  lab.audio?.pause();
+  try {
+    let url = lab.cache.get(key);
+    if (!url) {
+      voiceMsg("Rendering…");
+      const r = await post("api/voice/preview", { text, spec: lab.spec });
+      url = URL.createObjectURL(await r.blob());
+      lab.cache.set(key, url);
+      if (lab.cache.size > 80) {  // oldest first out
+        const [k0, u0] = lab.cache.entries().next().value;
+        URL.revokeObjectURL(u0);
+        lab.cache.delete(k0);
+      }
+    }
+    if (JSON.stringify([testText(), lab.spec]) !== key) return;  // the pick changed while rendering
+    lab.audio = new Audio(url);
+    await lab.audio.play();
+    voiceMsg(`Playing ${currentLabel()} here`);
+  } catch (err) { voiceMsg(err.message, true); }
+}
+$("play-here").addEventListener("click", playHere);
+
+$("play-roxy").addEventListener("click", async () => {
+  try {
+    await post("api/speak", { text: testText(), spec: lab.spec });
+    voiceMsg(`Playing ${currentLabel()} on Roxy`);
+  } catch (err) { voiceMsg(err.message, true); }
+});
+
+$("voice-use").addEventListener("click", async () => {
+  try {
+    await post("api/voice/use", { label: currentLabel(), spec: lab.spec });
+    $("voice-current").textContent = currentLabel();
+    voiceMsg(lastStatus.tts ? `Roxy now speaks as ${currentLabel()}` : `Saved: Roxy uses ${currentLabel()} once VOICE=true is running`);
+  } catch (err) { voiceMsg(err.message, true); }
+});
+
+function step(dir) {
+  const items = shown();
+  if (!items.length) return;
+  const i = items.findIndex((v) => v.name === lab.name);
+  const next = items[(i + dir + items.length) % items.length];
+  pick(next.name, true);
+}
+$("voice-prev").addEventListener("click", () => step(-1));
+$("voice-next").addEventListener("click", () => step(1));
+document.addEventListener("keydown", (ev) => {
+  if (!$("view-voice").classList.contains("active") || ev.target.closest("input, textarea, select")) return;
+  if (ev.key === "ArrowRight") { ev.preventDefault(); step(1); }
+  else if (ev.key === "ArrowLeft") { ev.preventDefault(); step(-1); }
+  else if (ev.key === " ") { ev.preventDefault(); playHere(); }
+});
 
 // ---------------- connection ----------------
 function dispatch(e, replay = false) {

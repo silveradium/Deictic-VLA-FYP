@@ -6,6 +6,7 @@
   "Hi Roxy" / "Hello Roxy" alone        -> stt/request "hi" (with voice: Gemini waves back), and
                                            the next sentence is still the request
   anything else                          -> ignored
+  stt/typed (the dashboard's text box)   -> a request as is, no wake phrase ("stop" stops)
 
 Requests are forwarded word for word: deictic words ("there", "that one") must reach NaVILA as
 spoken, because the model pairs them with the pointing gesture. stt/request carries the same text
@@ -54,6 +55,7 @@ class WakeRouter(Node):
         self.request_pub = self.create_publisher(String, "stt/request", 10)
         self.instruction_pub = self.create_publisher(String, "navila/instruction", 10)
         self.create_subscription(String, "stt/transcript", self.on_transcript, 10)
+        self.create_subscription(String, "stt/typed", self.on_typed, 10)
         self.create_subscription(Bool, "stt/mute", self.on_mute, LATCHED)
         self.get_logger().info(
             f"waiting for 'Hey Roxy, ...'; requests {'go' if self.forward else 'do not go'} "
@@ -92,8 +94,22 @@ class WakeRouter(Node):
             self.request_pub.publish(String(data="hi" if greeting else ""))  # never to navila
             return
 
+        self.send(request)
+
+    def on_typed(self, msg):
+        """Typed on the dashboard (a noisy hall): already addressed to Roxy, no wake phrase."""
+        text = msg.data.strip()
+        words = re.findall(r"[a-z']+", text.lower())
+        if words and words[0] in self.stop_words:
+            self.get_logger().info(f"stop (typed): {text!r}")
+            self.instruction_pub.publish(String(data="stop"))
+        elif words:
+            self.deadline = 0.0
+            self.send(text, typed=True)
+
+    def send(self, request, typed=False):
         request = request.strip(" ,.!?;:-")
-        self.get_logger().info(f"request: {request!r}")
+        self.get_logger().info(f"request{' (typed)' if typed else ''}: {request!r}")
         self.request_pub.publish(String(data=request))
         if self.forward:
             self.instruction_pub.publish(String(data=request))

@@ -23,6 +23,7 @@
     <button class="tab active" data-tab="live" role="tab">Live</button>
     <button class="tab" data-tab="vla" role="tab">VLA</button>
     <button class="tab" data-tab="logs" role="tab">Logs</button>
+    <button class="tab" data-tab="voice" role="tab">Voice</button>
   </nav>
 </header>
 
@@ -51,6 +52,19 @@
     </div>
 
     <aside class="side">
+      <div class="card type">
+        <div class="card-label">Type to Roxy <span class="right type-status" id="type-status"></span></div>
+        <form class="type-row" id="type-form" autocomplete="off">
+          <input id="type-text" maxlength="400" placeholder="walk to the red chair · what is your name? · sit down"
+                 aria-label="Message for Roxy">
+          <button type="submit" class="btn primary">Send</button>
+        </form>
+        <div class="type-actions">
+          <button type="button" class="btn" id="type-say" title="Roxy says the text word for word">Say it aloud</button>
+          <button type="button" class="btn danger" id="type-stop" title="End the NaVILA episode now">■ Stop</button>
+        </div>
+      </div>
+
       <div class="card heard">
         <div class="card-label">Heard</div>
         <div class="heard-text" id="heard-text"><span class="muted">Say “Hey Roxy, …”</span></div>
@@ -136,6 +150,54 @@
     <div class="card log-col" data-machine="server">
       <div class="card-label">NaVILA server <span class="sub">GPU workstation</span><span class="count" id="count-server">0</span></div>
       <ol class="log" id="log-server"></ol>
+    </div>
+  </div>
+</main>
+
+<!-- ============ VOICE ============ -->
+<main class="view" id="view-voice">
+  <div class="voice-grid">
+    <div class="card voice-lib">
+      <div class="card-label">Voices <span class="count" id="voice-count">0</span></div>
+      <div class="voice-tools">
+        <input type="search" id="voice-search" placeholder="Search voices…" aria-label="Search voices">
+        <div class="seg" id="voice-style"></div>
+      </div>
+      <ol class="voice-list" id="voice-list"><li class="empty">Loading voices…</li></ol>
+      <p class="hint">← → previous / next voice and play it · Space plays again</p>
+    </div>
+
+    <div class="voice-side">
+      <div class="card now">
+        <div class="card-label">Roxy's voice now</div>
+        <div class="now-voice" id="voice-current">from roxy.yaml</div>
+      </div>
+
+      <div class="card tester">
+        <div class="card-label">Test sentence <button type="button" class="link right" id="test-another">↻ another</button></div>
+        <textarea id="test-text" rows="2" maxlength="400" aria-label="Test sentence"></textarea>
+        <div class="picked" id="picked">Pick a voice</div>
+        <div class="play-row">
+          <button type="button" class="btn" id="voice-prev" title="Previous voice (←)">◀</button>
+          <button type="button" class="btn primary" id="play-here">▶ Play here</button>
+          <button type="button" class="btn" id="play-roxy" title="Plays on Roxy's speaker; needs VOICE=true and the Pi">🔊 Play on Roxy</button>
+          <button type="button" class="btn" id="voice-next" title="Next voice (→)">▶▶</button>
+        </div>
+        <label class="check"><input type="checkbox" id="autoplay" checked> Play each voice as I pick it</label>
+        <button type="button" class="btn use" id="voice-use">Use as Roxy's voice</button>
+        <div class="voice-msg" id="voice-msg"></div>
+      </div>
+
+      <div class="card knobs">
+        <div class="card-label">Tune it <button type="button" class="link right" id="voice-reset">reset</button></div>
+        <label class="field">Speaker <select id="knob-base"></select></label>
+        <div class="knob-grid" id="knob-grid"></div>
+        <div class="toggles" id="knob-toggles"></div>
+        <label class="field">Personality <select id="knob-persona">
+          <option value="robot">robot: precise, "Affirmative."</option>
+          <option value="scooby">scooby: goofy cartoon dog</option>
+        </select></label>
+      </div>
     </div>
   </div>
 </main>

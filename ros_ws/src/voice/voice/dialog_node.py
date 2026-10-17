@@ -85,6 +85,8 @@ class DialogNode(Node):
         self.create_subscription(String, "navila/instruction", self.on_instruction, 10)
         self.create_subscription(Bool, "voice/speaking", self.on_speaking, LATCHED)
         self.create_subscription(String, "voice/preset", self.on_preset, LATCHED)
+        # tts_node says these (dashboard voice tests, typed lines): mute the mic for them too
+        self.create_subscription(String, "voice/speak", lambda _: self.muted_for_speech(), 10)
         self.create_timer(0.5, self.watchdog)
         self.set_mute(False)
         self.get_logger().info(f"dialog ready ({self.model})")
@@ -99,9 +101,13 @@ class DialogNode(Node):
         if not self.speaker:
             self.get_logger().info(f"Roxy (no speaker): {text}")
             return
-        self.speak_t0 = time.monotonic()
-        self.set_mute(True)
+        self.muted_for_speech()
         self.say_pub.publish(String(data=text))
+
+    def muted_for_speech(self):
+        if self.speaker:
+            self.speak_t0 = time.monotonic()
+            self.set_mute(True)
 
     def on_speaking(self, msg):
         if msg.data:

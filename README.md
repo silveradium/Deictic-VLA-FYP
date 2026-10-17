@@ -42,6 +42,8 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 | `make calibrate` | Measure the robot's real turn (and with `FORWARD=1` walk) speeds, for `configs/robots/roxy.yaml` |
 | `make stt-echo` | Print what the mic hears (`stt/transcript`) while `make collect` / `make infer` runs |
 | `make say TEXT="..."` | Make Roxy speak through the Pi speaker (`VOICE=true`) |
+| Dashboard, Live tab | Type to Roxy when the hall is too loud for the mic (same path as "Hey Roxy, ..."); Stop button |
+| Dashboard, Voice tab | Try 100 robot voices, tune pitch / speed / effects, play here or on Roxy, "Use as Roxy's voice" |
 | `make voice-preset PRESET=robot` | Switch Roxy's voice (`scooby` / `robot`) while it runs |
 | `make navila-server` | NaVILA server alone (GPU machine) |
 | `make demo-gpu` | Live demo, workstation: NaVILA server for the venue laptop over Tailscale; prints the URL for the laptop |

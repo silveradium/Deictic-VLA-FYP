@@ -33,5 +33,6 @@ services:
     volumes:
       - ./configs:/deictic/configs:ro
       - ./scripts/dashboard:/deictic/dashboard:ro
+      - ./data/voice:/deictic/data/voice  # Roxy's voice as picked in the Voice tab (roxy_voice.json)
     command: python3 -u /deictic/dashboard/dashboard.py
     stop_signal: SIGINT

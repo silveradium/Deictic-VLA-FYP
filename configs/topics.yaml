@@ -38,6 +38,7 @@ camera:  # Orbbec Gemini 335 on the Pi (robot/pi/deictic_pi). Raw frames never l
 
 stt:  # mic speech-to-text on the bringup machine (audio_stt). Wake phrase: "Hey Roxy"
   stt/transcript: {type: std_msgs/msg/String, qos: reliable, from: stt_node, note: every finished sentence the mic hears}
+  stt/typed:      {type: std_msgs/msg/String, qos: reliable, from: dashboard,   note: 'typed in the Live tab: a request without the wake phrase (wake_router)'}
   stt/request:    {type: std_msgs/msg/String, qos: reliable, from: wake_router, note: 'what was said after "Hey Roxy"; empty = the wake phrase alone'}
   stt/mute:       {type: std_msgs/msg/Bool,   qos: latched,  from: dialog_node, note: 'true while Roxy speaks: the mic is ignored, so Roxy never hears itself'}
 
@@ -47,6 +48,8 @@ voice:  # spoken replies (ros_ws/src/voice on the bringup machine, speaker on th
   voice/audio:    {type: std_msgs/msg/UInt8MultiArray, qos: reliable, from: tts_node, note: 'one complete WAV file per line, ~50-250 KB'}
   voice/speaking: {type: std_msgs/msg/Bool,            qos: latched,  from: Pi speaker_node, note: true while the Pi speaker plays}
   voice/preset:   {type: std_msgs/msg/String,          qos: latched,  from: tts_node, note: 'scooby | robot; dialog_node talks in the matching style'}
+  voice/speak:    {type: std_msgs/msg/String,          qos: reliable, from: dashboard, note: '{"text", "voice": spec or null}: one line, e.g. a voice test; dialog_node mutes the mic'}
+  voice/config:   {type: std_msgs/msg/String,          qos: latched,  from: dashboard, note: '{"label", "spec"}: Roxy''s voice from the Voice tab (voice_fx.py spec)'}
   voice/trick:    {type: std_msgs/msg/String,          qos: reliable, from: dialog_node / make trick, note: 'a trick name from tricks/catalog.py; trick_node sends it to webrtc_req'}
 
 gesture:  # hand-gesture driving (go2_gesture) with gesture:=true

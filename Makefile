@@ -59,6 +59,7 @@ collect: ## Collection stack: Go2 bridge + teleop (Ctrl-C to stop)
 	$(STACK_COLLECT) up
 
 infer: ## Inference stack: Go2 bridge + teleop + NaVILA (dry run; MOTION=1 to move)
+	@mkdir -p data/voice  # the dashboard keeps Roxy's voice here (yours, not root's)
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_INFER) up
 
 instruct: ## Send NaVILA an instruction while `make infer` runs: TEXT="walk to the door"
@@ -100,8 +101,8 @@ say: ## Make Roxy speak through the Pi speaker (VOICE=true): TEXT="Ruh-roh, hell
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 topic pub --once -w 1 \
 		/voice/say std_msgs/msg/String "{data: \"$(TEXT)\"}"
 
-voice-preset: ## Switch Roxy's voice while it runs (VOICE=true): PRESET=scooby|robot
-	@test -n "$(PRESET)" || { echo 'usage: make voice-preset PRESET=robot'; exit 1; }
+voice-preset: ## Switch Roxy's voice while it runs (VOICE=true): PRESET=scooby|robot|poppy-bright|... (or the dashboard's Voice tab)
+	@test -n "$(PRESET)" || { echo 'usage: make voice-preset PRESET=robot   (names: ros_ws/src/voice/voice/voice_library.py)'; exit 1; }
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 param set /tts_node voice_preset $(PRESET)
 
 # --- live demo: venue laptop + remote GPU (docs/runbooks/live-demo.md) -------
@@ -117,6 +118,7 @@ demo-site: ## Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA
 		echo "NAVILA_SERVER_URL ($$url) points at this machine and nothing answers there:"; \
 		echo "  open the SSH tunnel to the GPU server, or set the workstation's URL (make demo-gpu prints it)"; exit 1; fi
 	@echo "Dashboard: http://localhost:$$(grep -oP '^DASHBOARD_PORT=\K[0-9]+' .env 2>/dev/null || echo 8080)"
+	@mkdir -p data/voice  # the dashboard keeps Roxy's voice here (yours, not root's)
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_SITE) up
 
 navila-probe: ## Which camera view makes NaVILA go forward? Asks it about the live frame many ways (nothing moves)
@@ -126,6 +128,7 @@ navila-probe: ## Which camera view makes NaVILA go forward? Asks it about the li
 		bringup python3 /deictic/scripts/navila_probe.py
 
 dashboard: ## Live dashboard on its own, next to a running stack (http://localhost:8080; MOTION=1 if it moves)
+	@mkdir -p data/voice  # the dashboard keeps Roxy's voice here (yours, not root's)
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_SITE) up -d dashboard
 	@echo "Dashboard: http://localhost:$$(grep -oP '^DASHBOARD_PORT=\K[0-9]+' .env 2>/dev/null || echo 8080)"
 

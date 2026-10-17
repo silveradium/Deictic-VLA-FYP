@@ -22,7 +22,8 @@ NAVILA_CAMERA_TOPIC points at it. Without the Pi it just waits.
 
 stt:=true (both modes) listens to the mic on this machine: stt_node transcribes, and wake_router
 sends "Hey Roxy, <instruction>" to navila/instruction and any sentence starting with "stop" at
-once (audio_stt). Set STT=false in .env on a machine without the mic.
+once (audio_stt). Set STT=false in .env on a machine without the mic. wake_router runs either
+way: it also takes requests typed on the dashboard (stt/typed), for a hall too noisy for the mic.
 
 voice:=true (VOICE=true + GEMINI_API_KEY in .env) adds spoken replies (voice): dialog_node asks
 Gemini whether a request is a command (sent to navila/instruction word for word) or a question
@@ -122,8 +123,7 @@ def generate_launch_description():
     wake_router = Node(
         package="audio_stt",
         executable="wake_router",
-        output="screen",
-        condition=stt,
+        output="screen",  # always: typed requests (stt/typed) need it even with stt:=false
         parameters=[LaunchConfiguration("robot_config"), {
             # with voice, dialog_node decides what reaches NaVILA
             "forward_to_navila": PythonExpression(["not ", voice_on]),
