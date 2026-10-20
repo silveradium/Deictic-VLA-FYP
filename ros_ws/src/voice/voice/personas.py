@@ -1,8 +1,8 @@
 """Roxy's personality for dialog_node, one per voice preset (voice/preset follows tts_node)."""
 
-from tricks.catalog import TRICKS
+from tricks.catalog import VOICE_TRICKS
 
-_TRICK_LIST = "\n".join(f"    {name}: {trick.hint}" for name, trick in TRICKS.items())
+_TRICK_LIST = "\n".join(f"    {name}: {trick.hint}" for name, trick in VOICE_TRICKS.items())
 
 _COMMON = """\
 You are Roxy, a friendly robot dog (a Unitree Go2) that people talk to through a microphone.

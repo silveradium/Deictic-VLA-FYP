@@ -93,11 +93,14 @@ def image_to_rgb(msg: Image) -> np.ndarray:
     return img[:, :, ::-1].copy() if msg.encoding.lower().startswith("bgr") else img.copy()
 
 
-def to_navila_view(rgb: np.ndarray, mode: str, size: int = 512) -> np.ndarray:
+def to_navila_view(rgb: np.ndarray, mode: str, size: int = 512, cut_bottom: float = 0.0) -> np.ndarray:
     """NaVILA squares every frame (trained on 512x512, 90 deg HFOV).
     crop:   center square (no distortion, but narrower: ~55 deg on the 69 deg Orbbec)
     squash: whole frame squeezed to a square (full width, stretched vertically)
-    pad:    whole frame letterboxed onto a black square (full width, undistorted)"""
+    pad:    whole frame letterboxed onto a black square (full width, undistorted)
+    cut_bottom: fraction of rows dropped from the bottom first (the robot's own body in view)"""
+    if cut_bottom > 0:
+        rgb = rgb[: int(round(rgb.shape[0] * (1 - cut_bottom)))]
     h, w = rgb.shape[:2]
     if mode == "crop":
         s = min(h, w)
@@ -123,8 +126,11 @@ class NavilaNode(Node):
             ("odom_topic", "odom"),
             ("cmd_topic", "cmd_vel"),
             ("image_mode", "crop"),
+            # the Orbbec sees the robot's grey dome in its bottom ~quarter; NaVILA reads it as an
+            # obstacle dead ahead and only turns. Cut it off (Orbbec topics only; 0 = keep)
+            ("orbbec_cut_bottom", 0.0),
             ("instruction", ""),
-            ("lin_speed", 0.5),
+            ("lin_speed", 0.3),
             ("ang_speed_deg", 30.0),
             # closed-loop slow-down floor near the target; the Go2 may not move below some speed
             ("min_lin_speed", 0.15),
@@ -140,6 +146,7 @@ class NavilaNode(Node):
             ("enable_motion", False),
         ])
         self.cfg = {param.name: param.value for param in p}
+        self.cut_bottom = self.cfg["orbbec_cut_bottom"] if "orbbec" in self.cfg["camera_topic"] else 0.0
 
         self.client = NaVilaClient(self.cfg["server_url"])
         self.get_logger().info(f"waiting for NaVILA server {self.cfg['server_url']} ...")
@@ -178,14 +185,16 @@ class NavilaNode(Node):
         self.get_logger().info(
             f"mid level: {self.cfg['lin_speed']} m/s, {self.cfg['ang_speed_deg']} deg/s, "
             f"floor {self.cfg['min_lin_speed']} m/s / {self.cfg['min_ang_speed_deg']} deg/s")
-        self.get_logger().info(f"camera: {self.cfg['camera_topic']} ({self.cfg['image_mode']}), "
+        self.get_logger().info(f"camera: {self.cfg['camera_topic']} ({self.cfg['image_mode']}, "
+                               f"bottom {self.cut_bottom:.0%} cut), "
                                f"waiting for an instruction on navila/instruction")
         if not self.cfg["enable_motion"]:
             self.get_logger().warn("DRY RUN: velocity commands are logged, not published (enable_motion:=true)")
 
     # ---------------- callbacks ----------------
     def on_image(self, msg):
-        self.frame, self.frame_t = to_navila_view(image_to_rgb(msg), self.cfg["image_mode"]), time.time()
+        self.frame = to_navila_view(image_to_rgb(msg), self.cfg["image_mode"], cut_bottom=self.cut_bottom)
+        self.frame_t = time.time()
 
     def on_odom(self, msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation

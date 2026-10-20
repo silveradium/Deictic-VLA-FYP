@@ -1,8 +1,9 @@
 """Which camera view makes NaVILA go forward? Asks the server about one live frame, many ways.
 
-  make navila-probe            robot standing still, facing open space (a corridor, a door ~3 m away)
+  make navila-probe            robot standing still, facing open space with a table or door 2-4 m away
 
-For every view (Orbbec crop / squash / pad, Go2 front camera squash for comparison) and every probe
+For every view (Orbbec crop / squash / pad, with and without the robot's dome cut off the bottom, and
+the Go2 front camera for comparison) and every probe
 instruction, it sends NaVILA exactly what navila_node sends at the start of an episode (the current
 frame, padded to the model's frame count) and prints what it answers. Nothing moves.
 
@@ -29,15 +30,20 @@ from navila_node.navila_node import image_to_rgb, to_navila_view
 
 INSTRUCTIONS = [
     "Walk forward and stop.",
-    "Walk forward to the door and stop.",
+    "Walk forward to the table and stop.",
+    "Walk straight to the table in front of you and stop next to it.",
     "Turn left and stop.",
+    "Turn right and stop.",
     "Stop.",
 ]
-VIEWS = [  # (name, camera, image_mode)
-    ("orbbec crop", "orbbec", "crop"),
-    ("orbbec squash", "orbbec", "squash"),
-    ("orbbec pad", "orbbec", "pad"),
-    ("go2 squash", "go2", "squash"),
+DOME = 0.28  # roxy.yaml navila_node orbbec_cut_bottom
+VIEWS = [  # (name, camera, image_mode, fraction cut off the bottom)
+    ("orbbec crop", "orbbec", "crop", 0.0),
+    ("orbbec crop-dome", "orbbec", "crop", DOME),
+    ("orbbec pad-dome", "orbbec", "pad", DOME),
+    ("orbbec squash-dome", "orbbec", "squash", DOME),
+    ("go2 crop", "go2", "crop", 0.0),
+    ("go2 squash", "go2", "squash", 0.0),
 ]
 
 
@@ -77,17 +83,17 @@ def main():
     rclpy.shutdown()
     if not frames:
         raise SystemExit("no camera frames: is the Pi camera up and the Go2 connected?")
-    missing = {cam for _, cam, _ in VIEWS} - set(frames)
+    missing = {cam for _, cam, _, _ in VIEWS} - set(frames)
     if missing:
         print(f"no frames from: {', '.join(sorted(missing))} (skipped)")
 
     out_dir = os.path.join(args.out, datetime.now().strftime("%Y%m%d_%H%M%S"))
     os.makedirs(out_dir, exist_ok=True)
     results = []
-    for name, cam, mode in VIEWS:
+    for name, cam, mode, cut in VIEWS:
         if cam not in frames:
             continue
-        view = to_navila_view(frames[cam], mode)
+        view = to_navila_view(frames[cam], mode, cut_bottom=cut)
         cv2.imwrite(os.path.join(out_dir, name.replace(" ", "_") + ".jpg"), cv2.cvtColor(view, cv2.COLOR_RGB2BGR))
         # episode start, as navila_node: one frame of history, padded to num_frames
         payload_frames = [encode_jpeg(f) for f in sample_frames([view], num_frames)]
@@ -99,7 +105,7 @@ def main():
             action = parse_navila_output(text)
             results.append({"view": name, "instruction": instruction, "text": text, "action": str(action),
                             "kind": action.kind})
-            print(f"  {name:<14} | {instruction:<36} -> {action}")
+            print(f"  {name:<18} | {instruction:<62} -> {action}")
 
     with open(os.path.join(out_dir, "results.json"), "w") as f:
         json.dump({"server": args.server, "health": health, "results": results}, f, indent=2)
@@ -108,13 +114,15 @@ def main():
     print("\n=== forward instructions answered with forward ===")
     forward_qs = [q for q in instructions if "forward" in q.lower()]
     good = []
-    for name, _, _ in VIEWS:
+    for name, _, _, _ in VIEWS:
         rows = [r for r in results if r["view"] == name]
         if not rows:
             continue
         fwd = sum(r["kind"] == "forward" for r in rows if r["instruction"] in forward_qs)
-        turns_ok = all(r["kind"].startswith("turn") for r in rows if r["instruction"].lower().startswith("turn"))
-        print(f"  {name:<14} {fwd}/{len(forward_qs)} forward{'' if turns_ok else '  (turn instruction not turning)'}")
+        # a turn instruction must turn that way: a view that turns left for everything ignores the words
+        turns_ok = all(r["kind"] == ("turn_left" if "left" in r["instruction"].lower() else "turn_right")
+                       for r in rows if r["instruction"].lower().startswith("turn"))
+        print(f"  {name:<18} {fwd}/{len(forward_qs)} forward{'' if turns_ok else '  (turns the wrong way when told to turn)'}")
         if forward_qs and fwd == len(forward_qs) and turns_ok:
             good.append(name)
     print(f"\n{'Use: ' + ', '.join(good) if good else 'No view goes forward reliably from here.'}"

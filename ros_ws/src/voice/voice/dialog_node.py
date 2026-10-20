@@ -28,7 +28,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, String
 
-from tricks.catalog import TRICKS
+from tricks.catalog import VOICE_TRICKS
 from voice.personas import ACKS, OFFLINE, PERSONAS, STOPPING
 
 LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -38,7 +38,7 @@ SCHEMA = {
     "type": "OBJECT",
     "properties": {
         "intent": {"type": "STRING", "enum": ["navigate", "trick", "question"]},
-        "trick": {"type": "STRING", "enum": [*TRICKS, "none"]},
+        "trick": {"type": "STRING", "enum": [*VOICE_TRICKS, "none"]},
         "question": {"type": "STRING"},
         "reply": {"type": "STRING"},
     },
@@ -204,7 +204,7 @@ class DialogNode(Node):
 
         out = json.loads(response.text)
         intent = out.get("intent") if out.get("intent") in ("navigate", "trick", "question") else "question"
-        trick = out.get("trick") if out.get("trick") in TRICKS else "none"
+        trick = out.get("trick") if out.get("trick") in VOICE_TRICKS else "none"
         if intent == "trick" and trick == "none":
             intent = "question"  # a trick Roxy doesn't have: the reply already says so
         reply = str(out.get("reply", "")).strip() or random.choice(ACKS[self.preset])

@@ -3,7 +3,11 @@
   "Roxy, sit down"  -> dialog_node (Gemini) picks "sit" -> Sit
   "Roxy, dance!"    -> "dance" -> stands up first if Roxy is sitting or lying, then Dance1
   "Hi Roxy"         -> "hello" -> a wave
+  a thumbs up        -> go2_gesture (GESTURE=tricks) sends "hello" the same way
   by hand, while a stack runs: `make trick NAME=sit`
+
+The same trick again within repeat_guard s is dropped: a gesture and Gemini can both send
+"come_forward" for one "come here", and it must walk 1 m, not 2.
 
 Posture is tracked from the commands sent here, so a trick that needs Roxy standing stands her up
 first. Moving her with the remote in between can fool it; "stand up" always works.
@@ -34,6 +38,8 @@ class TrickNode(Node):
         p = self.declare_parameter
         self.stand_settle = p("stand_settle", 3.0).value  # s for StandUp / RiseSit before the next command
         self.forward_instruction = p("forward_instruction", "forward 1 m").value  # come_forward
+        self.repeat_guard = p("repeat_guard", 3.0).value  # s
+        self.last = ("", -1e9)  # (trick, monotonic time) last started
 
         self.posture = "standing"  # assumed at start: what the remote leaves the Go2 in
         self.queue = []  # [(kind, arg, wait_s)], run one at a time by tick()
@@ -56,6 +62,11 @@ class TrickNode(Node):
         if trick is None:
             self.get_logger().warn(f"unknown trick {name!r}: one of {', '.join(TRICKS)}")
             return
+        now = time.monotonic()
+        if self.last[0] == name and now - self.last[1] < self.repeat_guard:
+            self.get_logger().info(f"trick {name}: already started {now - self.last[1]:.1f} s ago, ignored")
+            return
+        self.last = (name, now)
         steps = []
         if self.navila_active and name != "come_forward":  # come_forward replaces the episode itself
             steps.append(("instruction", "stop", 0.5))

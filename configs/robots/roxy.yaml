@@ -26,6 +26,9 @@ navila_node:
     # NaVILA squares every frame (trained on 90 deg HFOV): crop = center square (~55 deg of the Orbbec's 69),
     # squash = full width stretched, pad = full width letterboxed. `make navila-probe` compares them
     image_mode: crop
+    # The Orbbec sees the robot's grey dome in the bottom ~quarter of every frame; with it NaVILA
+    # ignored the instruction and only turned (2026-10-18, scripts/navila_probe.py). Cut it off.
+    orbbec_cut_bottom: 0.28
 
 # Joystick (teleop_twist_joy, started by deictic_bringup), on top of go2's twist_mux.yaml. It drives
 # only while the enable button is held. Without that, an idle joystick sends zeros on cmd_vel_joy at
@@ -39,8 +42,11 @@ go2_teleop_node:
 # Mic speech-to-text (ros_ws/src/audio_stt), on the machine the DJI Mic Mini is plugged into
 stt_node:
   ros__parameters:
-    # MIC=dji|builtin in .env picks one; each is a device name substring, an index, "pulse" or "default"
+    # MIC=dji|jack|builtin in .env picks one; each is a device name substring, an index, "pulse" or "default"
     mic_device_dji: MINI          # DJI Mic Mini receiver (USB)
+    # DJI receiver on the laptop's audio jack: the same sound card as the built-in mic, which
+    # switches to the jack only when it detects a mic there (a TRRS plug; `make mic-check`)
+    mic_device_jack: CS8409
     mic_device_builtin: CS8409    # the laptop's built-in mic (HDA Intel PCH: CS8409/CS42L42 Analog)
     model_arch: medium-streaming  # Moonshine; small-streaming if the CPU can't keep up
     keyterms: [Roxy, Hey Roxy, heroxy]    # biases recognition towards the robot's name

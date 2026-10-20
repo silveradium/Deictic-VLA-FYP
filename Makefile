@@ -32,7 +32,7 @@ endif
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
         instruct navila-stop robot-stop trick calibrate stt-echo say voice-preset \
         demo-gpu demo-site navila-health build-pi pi-volume pi-up pi-down pi-logs pi-shell \
-        demo-site demo-gpu dashboard navila-probe bag2ep export train-submit
+        demo-site demo-gpu dashboard navila-probe bag2ep export train-submit mic-check
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -55,10 +55,10 @@ build-navila: ## Build the NaVILA CUDA image
 	$(STACK_NAVILA) build navila_server
 
 # --- run ---------------------------------------------------------------------
-collect: ## Collection stack: Go2 bridge + teleop (Ctrl-C to stop)
+collect: mic-check ## Collection stack: Go2 bridge + teleop (Ctrl-C to stop)
 	$(STACK_COLLECT) up
 
-infer: ## Inference stack: Go2 bridge + teleop + NaVILA (dry run; MOTION=1 to move)
+infer: mic-check ## Inference stack: Go2 bridge + teleop + NaVILA (dry run; MOTION=1 to move)
 	@mkdir -p data/voice  # the dashboard keeps Roxy's voice here (yours, not root's)
 	NAVILA_MOTION=$(if $(MOTION),true,false) $(STACK_INFER) up
 
@@ -93,6 +93,26 @@ calibrate: ## Measure the robot's real turn rates (with `make collect`; FORWARD=
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 run navila_node calibrate_motion \
 		--ros-args -p forward:=$(if $(FORWARD),true,false)
 
+# The laptop's jack and built-in mic are one sound card (PCH, CS8409): it records from the jack only
+# while it detects a mic plugged in there ('Mic Jack' on), which needs a TRRS plug (3 rings).
+# The DJI receiver's camera cable is TRS (2 rings): the laptop sees headphones and keeps its own mic.
+mic-check: ## Which mic speech-to-text will hear (MIC=dji|jack|builtin; runs before every stack)
+	@mic=$${MIC:-$$(grep -oP '^MIC=\K\S+' .env 2>/dev/null)}; mic=$${mic:-dji}; \
+	jack=$$(amixer -c PCH cget iface=CARD,name='Mic Jack' 2>/dev/null | grep -oP ': values=\K\w+'); \
+	case $$mic in \
+	dji) if arecord -l 2>/dev/null | grep -qi 'MINI'; then echo "Mic: DJI receiver on USB"; \
+	     else echo "Mic: MIC=dji but no DJI receiver on USB. On the audio jack? Set MIC=jack in .env."; \
+	          echo "     Until then speech-to-text uses the default mic (the laptop's)."; fi ;; \
+	jack) if [ "$$jack" = on ]; then amixer -q -c PCH sset Mic 0dB 2>/dev/null; \
+	      echo "Mic: DJI receiver on the audio jack (the laptop detects a mic there)"; \
+	      else echo "Mic: MIC=jack but the laptop detects no mic in the jack$${jack:+ (Mic Jack: $$jack)}:"; \
+	           echo "     the DJI cable is TRS (2 rings), so the laptop sees headphones. Use a TRS-to-TRRS"; \
+	           echo "     cable or adapter (3 rings), or the receiver's USB-C (MIC=dji)."; \
+	           echo "     Until then speech-to-text hears the laptop's built-in mic."; fi ;; \
+	builtin) echo "Mic: the laptop's built-in mic" ;; \
+	*) echo "MIC must be dji, jack or builtin, not '$$mic'"; exit 1 ;; \
+	esac
+
 stt-echo: ## Print what the mic hears (stt/transcript) while collect / infer runs
 	$(STACK_COLLECT) exec bringup /entrypoint.sh ros2 topic echo /stt/transcript std_msgs/msg/String
 
@@ -111,7 +131,7 @@ demo-gpu: ## Live demo, workstation: NaVILA server for the venue laptop, over Ta
 	echo "On the laptop, in .env: NAVILA_SERVER_URL=http://$${ip:-TAILSCALE_IP}:$$port"
 	$(STACK_NAVILA) up
 
-demo-site: ## Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA via the workstation (MOTION=1 to move)
+demo-site: mic-check ## Live demo, venue laptop: Go2 bridge, joystick, mic + voice, NaVILA via the workstation (MOTION=1 to move)
 	@# A local URL is fine through an SSH tunnel (ssh -N -L 8000:127.0.0.1:8000 <server>), as long as it answers
 	@url=$$(grep -oP '^NAVILA_SERVER_URL=\K\S+' .env); \
 	if echo "$$url" | grep -qE '^http://(127\.0\.0\.1|localhost)' && ! curl -fsS --max-time 5 "$$url/health" >/dev/null; then \

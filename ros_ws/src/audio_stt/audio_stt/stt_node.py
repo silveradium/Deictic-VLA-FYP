@@ -1,8 +1,10 @@
 """Mic -> Moonshine speech-to-text -> stt/transcript, one message per finished sentence.
 
-Runs in the bringup container on the machine the mic is on: the DJI Mic Mini receiver (MIC=dji in
-.env) or the laptop's built-in mic (MIC=builtin)
-(docs/network.md). Moonshine runs on the CPU; the first start downloads the model into the
+Runs in the bringup container on the machine the mic is on: the DJI Mic Mini receiver on USB
+(MIC=dji in .env) or on the audio jack (MIC=jack), or the laptop's built-in mic (MIC=builtin)
+(docs/network.md). The jack is the laptop's own sound card, which records from the jack only when it
+detects a mic there (a TRRS plug); `make mic-check` says which. A mic that isn't there falls back
+to the default one, with an error in the log, rather than leaving Roxy deaf. Moonshine runs on the CPU; the first start downloads the model into the
 stt_models volume (docker/compose/ros.yml). Parameters: configs/robots/roxy.yaml, stt_node.
 
 While stt/mute is true (Roxy speaking, voice:=true), and for unmute_delay s after, the mic is
@@ -15,6 +17,7 @@ Mics the container can see:
 import time
 
 import rclpy
+import sounddevice
 from moonshine_voice import string_to_model_arch
 from moonshine_voice.mic_transcriber import MicTranscriber
 from rcl_interfaces.msg import ParameterDescriptor
@@ -30,11 +33,12 @@ LATCHED = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
 class SttNode(Node):
     def __init__(self):
         super().__init__("stt_node")
-        # mic:=dji|builtin picks mic_device_dji or mic_device_builtin; mic_device, when set,
-        # overrides both. Each is a substring of the device name, an index, "pulse" or "default"
+        # mic:=dji|jack|builtin picks mic_device_<mic>; mic_device, when set, overrides them.
+        # Each is a substring of the device name, an index, "pulse" or "default"
         mic = self.declare_parameter("mic", "dji").value
         presets = {
             "dji": self.declare_parameter("mic_device_dji", "MINI").value,
+            "jack": self.declare_parameter("mic_device_jack", "default").value,
             "builtin": self.declare_parameter("mic_device_builtin", "default").value,
         }
         if mic not in presets:
@@ -55,6 +59,13 @@ class SttNode(Node):
             device = None
         elif device.isdigit():
             device = int(device)
+        if device is not None:
+            try:
+                sounddevice.query_devices(device, "input")
+            except ValueError as e:  # e.g. MIC=dji with the receiver on the jack: no USB "MINI"
+                self.get_logger().error(f"no input device {device!r} for mic:={mic} ({e}); "
+                                        "using the default mic instead (make mic-check)")
+                device = None
         # The device's own sample rate (48 kHz for the DJI) is used if it refuses 16 kHz;
         # Moonshine resamples.
         self.mic = (MicTranscriber()

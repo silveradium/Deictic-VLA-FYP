@@ -1,5 +1,9 @@
 gesture_teleop:
   ros__parameters:
+    # drive: hand signs drive the robot on cmd_vel. tricks: hand signs ask for tricks (voice/trick).
+    # Set by bringup from GESTURE=drive|tricks in .env.
+    mode: drive
+
     # Camera: the Go2's front camera from the go2_ros2_sdk driver. '' = local webcam below.
     image_topic: camera/image_raw
     camera_device: 0          # webcam /dev/videoN, only when image_topic is ''
@@ -17,6 +21,7 @@ gesture_teleop:
     # Smoothing: the most common gesture over the last N frames is the command.
     gesture_history_len: 10
 
+    # --- mode drive ---
     # No commanding gesture for this long: one zero Twist, then cmd_vel is released.
     no_hand_timeout: 0.5
 
@@ -26,3 +31,23 @@ gesture_teleop:
 
     # cmd_vel publish rate while a gesture is active
     control_rate: 20.0        # Hz
+
+    # --- mode tricks ---
+    # sign:trick. Signs (finger rules in gesture_teleop.py, _finger_sign): like = thumbs up,
+    # rock = index and pinky up, palm = open hand, heart = both hands. Tricks from
+    # ros_ws/src/tricks/tricks/catalog.py. Drop rock:jump where there is no room for a hop forward.
+    gesture_tricks: ["like:hello", "heart:finger_heart", "rock:jump"]
+    # trick:line Roxy says as she starts it (VOICE=true and the Pi speaker); "" says nothing
+    trick_lines: ["hello:Nice to meet you!", "finger_heart:Aww, I love you too!",
+                  "jump:Woo-hoo!", "come_forward:Coming!"]
+    vote_fraction: 0.7        # of gesture_history_len frames: ~0.5 s held steadily fires it
+    trick_cooldown: 6.0       # s after a trick before the next sign fires
+    heart_touch: 0.6          # heart: index tips and thumb tips this close (in hand sizes)
+    # An open palm, then "come here" / "come on" / "come towards me" within come_window s:
+    # come_trick, no "Hey Roxy" needed. With "Hey Roxy" Gemini handles it (wake_names).
+    come_gesture: palm
+    come_trick: come_forward
+    come_window: 4.0          # s
+    come_words: ["come", "cmon", "c'mon"]
+    wake_names: ["roxy", "roxie", "roxi", "rocksy", "roxey"]
+    during_navigation: false  # false: signs are ignored while NaVILA navigates

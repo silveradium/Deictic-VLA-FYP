@@ -97,8 +97,12 @@ class WakeRouter(Node):
         self.send(request)
 
     def on_typed(self, msg):
-        """Typed on the dashboard (a noisy hall): already addressed to Roxy, no wake phrase."""
+        """Typed on the dashboard (a noisy hall): already addressed to Roxy, no wake phrase needed.
+        A typed "Hey Roxy, ..." loses it, as when spoken: NaVILA should see only the instruction."""
         text = msg.data.strip()
+        match = self.wake_re.match(text)
+        if match:
+            text = text[match.end():].strip(" ,.!?;:-")
         words = re.findall(r"[a-z']+", text.lower())
         if words and words[0] in self.stop_words:
             self.get_logger().info(f"stop (typed): {text!r}")

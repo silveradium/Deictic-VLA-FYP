@@ -4,6 +4,7 @@ bringup.launch.py starts it itself with gesture:=true (GESTURE=true in .env); th
 for running it by hand, e.g. in `make ros-shell`:
 
   ros2 launch go2_gesture gesture_teleop.launch.py                       # Go2 front camera
+  ros2 launch go2_gesture gesture_teleop.launch.py mode:=tricks          # signs -> tricks
   ros2 launch go2_gesture gesture_teleop.launch.py image_topic:='' camera_device:=0   # webcam
   ros2 launch go2_gesture gesture_teleop.launch.py max_linear_speed:=0.2
 """
@@ -25,6 +26,8 @@ def generate_launch_description():
         return ParameterValue(LaunchConfiguration(name), value_type=str)
 
     return LaunchDescription([
+        DeclareLaunchArgument('mode', default_value='drive', choices=['drive', 'tricks'],
+                              description='drive: signs -> cmd_vel; tricks: signs -> voice/trick'),
         DeclareLaunchArgument('image_topic', default_value='camera/image_raw',
                               description="Camera topic; '' = local webcam (camera_device)"),
         DeclareLaunchArgument('camera_device', default_value='0',
@@ -42,6 +45,7 @@ def generate_launch_description():
             parameters=[
                 params_file,
                 {
+                    'mode':              arg('mode'),
                     'image_topic':       arg('image_topic'),
                     'camera_device':     LaunchConfiguration('camera_device'),
                     'max_linear_speed':  LaunchConfiguration('max_linear_speed'),

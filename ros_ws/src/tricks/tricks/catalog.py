@@ -1,9 +1,10 @@
 """The tricks Roxy does on request: one place for trick_node (what to send) and dialog_node (what
 Gemini may pick). Pure Python, no ROS imports.
 
-API ids are Unitree's sport API (go2_robot_sdk/domain/constants/robot_commands.py). Jumps and flips
-(FrontJump, FrontFlip, FrontPounce, Handstand, Bound, ...) are left out on purpose, and so is Damp,
-which drops the robot where it stands.
+API ids are Unitree's sport API (go2_robot_sdk/domain/constants/robot_commands.py). Flips
+(FrontFlip, FrontPounce, Handstand, Bound, ...) are left out on purpose, and so is Damp, which drops
+the robot where it stands. "jump" (FrontJump, a hop forward) is gesture-only (go2_gesture, the rock
+sign): Gemini never picks it from something misheard in a crowd.
 """
 
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ CONTENT = 1020
 DANCE1 = 1022
 DANCE2 = 1023
 SCRAPE = 1029
+FRONT_JUMP = 1031
 WIGGLE_HIPS = 1033
 FINGER_HEART = 1036
 
@@ -31,6 +33,7 @@ class Trick:
     hint: str              # for Gemini: what it is and how people ask for it
     api_id: int | None     # one sport command; None: trick_node handles it specially
     posture: str = "standing"  # where Roxy ends up; every trick but these starts from standing
+    voice: bool = True     # false: not offered to Gemini (only gestures and `make trick` send it)
 
 
 TRICKS = {
@@ -47,4 +50,6 @@ TRICKS = {
     "happy": Trick("show you are happy: are you happy, good dog, who's a good dog", CONTENT),
     "come_forward": Trick("walk straight ahead about one metre: come forward, step forward, come closer; "
                           "not for going to a place or something pointed at (that is navigate)", None),
+    "jump": Trick("hop forward on all four legs", FRONT_JUMP, voice=False),
 }
+VOICE_TRICKS = {name: trick for name, trick in TRICKS.items() if trick.voice}
