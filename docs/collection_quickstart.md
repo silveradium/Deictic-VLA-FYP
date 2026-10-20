@@ -16,7 +16,7 @@ data/sessions/session_20261013_153000/   ← one session
 ## Before you start
 
 1. Pi on (the camera starts by itself; if not, `make pi-up`).
-2. No mic for now (`STT=false` in `.env`): instructions are typed.
+2. No mic (`STT=false` in `.env`): instructions are typed.
 3. Go2 on and standing. **Close the Unitree app on every phone.**
 4. First time after pulling new code: `make build-ros`.
 
@@ -61,12 +61,15 @@ make preview                                  # latest session
 make preview SESSION=session_20261013_153000  # a specific one
 ```
 
-Opens a page per session: instruction, video, path from above, and a checklist of anything missing.
-Do 2–3 episodes, `q`, `make preview`, check, *then* record a lot.
+Opens a page per session: instruction, video, path from above, how it was driven, and a checklist of
+anything missing. Do 2–3 episodes, `q`, `make preview`, check, *then* record a lot.
+
+Only raw data is saved -- instruction, frames, odometry, the rest of the topics. No action labels:
+the wording is still open, and odometry in the bag is enough to derive them later.
 
 ## Optional second terminal
 
 Only for watching, never type anything in it while recording:
 
-- `make logs`: what the Go2 connection and the mic are doing (useful when you see a `!` warning).
+- `make logs`: what the Go2 connection is doing (useful when you see a `!` warning).
 - `make orbbec-view`, then open http://localhost:8090: live camera.
