@@ -41,11 +41,28 @@ SP5', SP10, SP10'. Everything else (104) is training.
 laptop:       data/sessions/session_*/ep_*/   raw bags (never uploaded)
                  -> export (CPU, minutes)  -> data/navila_mix/deictic/   frames + train.json / eval.json
 workstation:  NaVila/NaVILA/NaVILA-Dataset/RxR/   full RxR (annotations + 23 GB frames)
-                 -> replay subset              -> data/navila_mix/rxr/      only the picked trajectories
+                 -> make rxr-replay  (DONE)  -> data/navila_mix/rxr_replay.json, rxr_eval.json, rxr/
 both:         rsync data/navila_mix/ -> ENTC server (a few hundred MB to ~1 GB)
 ENTC server:  NaVILA code (fork) + base model from Hugging Face (a8cheng/navila-llama3-8b-8f, ~16 GB)
                  -> LoRA adapter (small) -> back to the workstation for Roxy
 ```
+
+## RxR replay set (done, on the workstation)
+
+`make rxr-replay` (`data_pipeline/export/rxr_replay.py`, env `deictic_export` from
+`data_pipeline/export/requirements.txt`) picked whole RxR trajectories with seed 0 and copied only
+their frames from the local RxR, instead of the notebook's 24 GB download (its steps 1-3):
+
+| File in `data/navila_mix/` | Content |
+|---|---|
+| `rxr_replay.json` | 100 trajectories, 6,392 records: mixed into training |
+| `rxr_eval.json` | 50 other trajectories, 3,432 records: what fine-tuning forgets (base model saw them) |
+| `rxr/` | 19,551 frames (558 MB), the image folder of both sets |
+| `rxr_report.json` | seed, trajectory ids, counts |
+
+Checked: no overlap, no missing frames, records identical to the source, stop share 7.8% (RxR 8.0%).
+The mix step can use fewer replay records than this; it must read these files (image path
+`navila_mix/rxr`) rather than pick or download again.
 
 ## Next steps
 
@@ -58,8 +75,9 @@ ENTC server:  NaVILA code (fork) + base model from Hugging Face (a8cheng/navila-
    - test split from the held-out spots instead of `EVAL_FRACTION`;
    - strafing / reversing checks from `path_stats.py` instead of `odom_actions.py`'s simpler lateral
      check, which flags curved walking and would drop good episodes under `STRICT`;
-   - replay from the local RxR copy only, and copy the needed frames into `data/navila_mix/rxr/` so the
-     folder is self-contained.
+   - mix step: read the RxR replay set above, skip the notebook's download steps. It needs the replay
+     record count (from `rxr_report.json`) for the repeat factor; the frames only have to be on the
+     training machine.
 4. **Training script for the server**: `--bits 4`, no DeepSpeed ZeRO-3, `torchrun --nproc_per_node=2`,
    per-GPU batch 1-2 with gradient accumulation, `output_dir` containing `lora` (NaVILA's loader
    only loads LoRA weights from such paths). bf16 and flash-attention need an Ampere or newer GPU.

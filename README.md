@@ -35,6 +35,7 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 | `make collect` | Data collection: starts bringup (Go2, mic) if needed, then the terminal recorder, one bag per episode ([docs/collection_protocol.md](docs/collection_protocol.md)) |
 | `make logs` | Follow the bringup logs (Go2 bridge, STT) in a second terminal |
 | `make preview` | Look inside a session's episode bags: video, odometry path, driving summary, every topic (`SESSION=...`, default latest) |
+| `make rxr-replay` | RxR replay data for fine-tuning, from the local RxR copy into `DATA_DIR/navila_mix` (once, on the machine with RxR; [docs/finetune_plan.md](docs/finetune_plan.md)) |
 | `make infer` | Inference stack: collection stack + NaVILA server + navila_node. Dry run; `MOTION=1` to move |
 | `make instruct TEXT="..."` | Give NaVILA an instruction (while `make infer` runs) |
 | `make navila-stop` | End the NaVILA episode, robot holds still |

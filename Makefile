@@ -20,7 +20,7 @@ DATA_DIR := $(or $(shell grep -oP '^DATA_DIR=\K\S+' .env 2>/dev/null),./data)
 .PHONY: help setup build build-ros build-navila collect infer navila-server down ros-shell \
         instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
         demo-gpu demo-site navila-health build-pi pi-up pi-down pi-logs pi-shell \
-        logs preview orbbec-view \
+        logs preview orbbec-view rxr-replay \
         demo-site demo-gpu bag2ep export train-submit
 
 help: ## List targets
@@ -105,6 +105,15 @@ preview: ## Look inside a session's episode bags: video, odom path, driving summ
 		/deictic/data/sessions/$$s \
 	&& echo "open $(DATA_DIR)/sessions/$$s/preview/index.html" \
 	&& (xdg-open "$(DATA_DIR)/sessions/$$s/preview/index.html" >/dev/null 2>&1 &)
+
+# --- fine-tuning data (docs/finetune_plan.md) -----------------------------------
+# Runs on the host, in an env with data_pipeline/export/requirements.txt:
+#   conda create -n deictic_export python=3.10 && pip install -r data_pipeline/export/requirements.txt
+# ROS's PYTHONPATH and ~/.local are kept out so they can't shadow the env's packages.
+EXPORT_PY ?= $(firstword $(wildcard $(HOME)/miniconda3/envs/deictic_export/bin/python) python3)
+
+rxr-replay: ## RxR replay data for fine-tuning from the local RxR copy -> DATA_DIR/navila_mix (ARGS="--replay 100 --eval 50")
+	PYTHONPATH= PYTHONNOUSERSITE=1 $(EXPORT_PY) -m data_pipeline.export.rxr_replay $(ARGS)
 
 # --- live demo: venue laptop + remote GPU (docs/runbooks/live-demo.md) -------
 demo-gpu: ## Live demo, workstation: NaVILA server for the venue laptop, over Tailscale
