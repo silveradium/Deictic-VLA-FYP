@@ -36,6 +36,9 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 | `make logs` | Follow the bringup logs (Go2 bridge, STT) in a second terminal |
 | `make preview` | Look inside a session's episode bags: video, odometry path, driving summary, every topic (`SESSION=...`, default latest) |
 | `make rxr-replay` | RxR replay data for fine-tuning, from the local RxR copy into `DATA_DIR/navila_mix` (once, on the machine with RxR; [docs/finetune_plan.md](docs/finetune_plan.md)) |
+| `make export SESSION=...` | Episodes -> NaVILA training format in `DATA_DIR/navila_mix/deictic`: labels from odometry (corrected for its lag), pointing frames, train/eval split ([docs/finetune_plan.md](docs/finetune_plan.md)) |
+| `make train-setup` | On aberdeen (ENTC): one-time training setup next to the repo, no root needed: Miniforge env, NaVILA fork, base model ([docs/finetune_plan.md](docs/finetune_plan.md)) |
+| `make train` | On aberdeen: LoRA fine-tuning of NaVILA on `DATA_DIR/navila_mix`, 2 GPUs. `CHECK=1` checks data and attention only, `SMOKE=1` runs 20 steps |
 | `make infer` | Inference stack: collection stack + NaVILA server + navila_node. Dry run; `MOTION=1` to move |
 | `make instruct TEXT="..."` | Give NaVILA an instruction (while `make infer` runs) |
 | `make navila-stop` | End the NaVILA episode, robot holds still |
@@ -54,7 +57,7 @@ firewall rule for the Pi: [docs/runbooks/dds.md](docs/runbooks/dds.md).
 | `make pi-up` / `make pi-down` | On the Pi: start (in the background, survives reboots) / stop the Orbbec camera |
 | `make pi-logs` / `make pi-shell` | On the Pi: follow the camera's logs / open a shell in its container |
 
-Planned: `bag2ep` (5), `export` (8), `train-submit` (9).
+Planned: `bag2ep` (5).
 
 ## Layout
 
@@ -100,7 +103,7 @@ The modified forks currently sit untracked in the repo root, and the images read
 - [ ] 8. `data_pipeline/deepoint` augmentation + `export` to NaVILA format. Export and mixing with NaVILA
   replay data (against forgetting): `data_pipeline/export/mix_navila.ipynb`, outside Docker
   (`pip install -r data_pipeline/export/requirements.txt`)
-- [ ] 9. `training/`: env, LoRA config, aberdeen job scripts
+- [ ] 9. `training/`: env, LoRA config, aberdeen job scripts (written, data check passes; not yet run on aberdeen)
 
 ## Rules
 

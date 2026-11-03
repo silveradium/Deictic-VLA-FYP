@@ -21,7 +21,7 @@ DATA_DIR := $(or $(shell grep -oP '^DATA_DIR=\K\S+' .env 2>/dev/null),./data)
         instruct navila-stop robot-stop calibrate stt-echo say voice-preset \
         demo-gpu demo-site navila-health build-pi pi-up pi-down pi-logs pi-shell \
         logs preview orbbec-view rxr-replay \
-        demo-site demo-gpu bag2ep export train-submit
+        demo-site demo-gpu bag2ep export train-setup train
 
 help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -115,6 +115,21 @@ EXPORT_PY ?= $(firstword $(wildcard $(HOME)/miniconda3/envs/deictic_export/bin/p
 rxr-replay: ## RxR replay data for fine-tuning from the local RxR copy -> DATA_DIR/navila_mix (ARGS="--replay 100 --eval 50")
 	PYTHONPATH= PYTHONNOUSERSITE=1 $(EXPORT_PY) -m data_pipeline.export.rxr_replay $(ARGS)
 
+export: ## Episodes -> NaVILA training format in DATA_DIR/navila_mix/deictic (SESSION=S1-R1, ARGS="--eval-fraction 0.2")
+	@test -n "$(SESSION)" || { echo 'usage: make export SESSION=S1-R1'; exit 1; }
+	@d=$$(ls -d $(DATA_DIR)/sessions/$(SESSION) $(DATA_DIR)/$(SESSION) 2>/dev/null | head -1); \
+	test -n "$$d" || { echo "no session $(SESSION) in $(DATA_DIR)/sessions or $(DATA_DIR)"; exit 1; }; \
+	PYTHONPATH= PYTHONNOUSERSITE=1 $(EXPORT_PY) -m data_pipeline.export.deictic_export $$d $(ARGS)
+
+# --- training on aberdeen, the ENTC server (docs/finetune_plan.md) ---------------
+# No Docker or root there: everything goes next to this repo (miniforge3/, NaVILA/, models/, runs/).
+# Without make, run the two scripts directly.
+train-setup: ## On aberdeen: one-time setup next to the repo (Miniforge env, NaVILA fork, base model)
+	bash training/envs/aberdeen_setup.sh
+
+train: ## On aberdeen: LoRA fine-tuning on DATA_DIR/navila_mix (CHECK=1 data check, SMOKE=1 20 steps; RUN=, EPOCHS=, GPUS=)
+	MIX=$(abspath $(DATA_DIR))/navila_mix bash training/jobs/aberdeen_lora.sh
+
 # --- live demo: venue laptop + remote GPU (docs/runbooks/live-demo.md) -------
 demo-gpu: ## Live demo, workstation: NaVILA server for the venue laptop, over Tailscale
 	@ip=$$(tailscale ip -4 2>/dev/null | head -1); port=$$(grep -oP '^NAVILA_PORT=\K[0-9]+' .env 2>/dev/null || echo 8000); \
@@ -152,8 +167,3 @@ pi-shell: ## On the Pi: shell in the running camera container (ros2 topic hz ...
 bag2ep: ## [step 5] Bag -> canonical episodes (BAG=...)
 	@echo "bag2ep: not implemented yet (build step 5)"; exit 1
 
-export: ## [step 8] Episodes -> NaVILA training format
-	@echo "export: not implemented yet (build step 8)"; exit 1
-
-train-submit: ## [step 9] Submit LoRA training (TARGET=aberdeen|sg)
-	@echo "train-submit: not implemented yet (build step 9)"; exit 1
