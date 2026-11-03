@@ -17,12 +17,17 @@ collecting now does not commit to a format and nothing has to be re-recorded whe
 1. Go2 on and standing. **Close the Unitree app on every phone**: the robot takes one WebRTC client.
 2. `STT=false` and `VOICE=false` in `.env`: the instruction is typed, and Roxy's spoken replies are
    not needed for collection. No mic has to be plugged in.
-3. `make collect`. It starts bringup (Go2 bridge) if it isn't running, waits for odometry and the
-   camera, then shows:
+3. `make collect`. It starts bringup (Go2 bridge) if it isn't running, asks for the session name,
+   waits for odometry and the camera, then shows:
    ```
-   [odom 15 Hz | camera 15 fps]  kept 0, discarded 0
-   Episode 1: [Enter] start   [q] quit >
+   Session name (e.g. S1-R1) > S1-R1
+     new session
+
+   [odom 15 Hz | camera 15 fps]  0 episode(s) recorded this run
+   Next episode (ep_001): [Enter] start   [q] quit >
    ```
+   The session name is the folder the episodes go in: a new name makes it, a name already in
+   `DATA_DIR/sessions` adds to it (so a session can be continued after quitting, or after a crash).
    Lines starting with `!` (`NO ODOM`, `NO CAMERA`) must be fixed first. `make logs` in a second
    terminal shows the Go2 bridge.
 4. Optional: `make orbbec-view` in a second terminal, then http://localhost:8090.
@@ -31,33 +36,40 @@ collecting now does not commit to a format and nothing has to be re-recorded whe
 
 | Press | What happens |
 |---|---|
-| **Enter** | `● REC ep_001`: recording starts. Point at the target and type the instruction ("go to that door") |
-| **Enter** | Instruction done: it is shown. Drive Roxy to the target with the remote: turn and walk forward, **no strafing, no reversing** |
-| **Ctrl-C** | Roxy has stopped at the target: the episode ends |
-| **Enter** / **d** / **e** | Keep it / discard it / edit the instruction (typo, or the wrong target) |
+| **Enter** | `● REC`: recording starts. Point at the target, then drive Roxy to it with the remote: turn and walk forward, **no strafing, no reversing** |
+| **Enter** | Roxy has stopped at the target: recording ends |
+| type + **Enter** | The instruction ("go to that door"). Empty is asked twice, then allowed |
+| type + **Enter** | The episode name. Enter takes the offered `ep_NNN`; a name that already exists in the session overwrites that episode |
 
-Ctrl-C while typing the instruction cancels the episode. An episode with no instruction can't be kept
-until one is typed with `e`. `q` (or Ctrl-C at the prompt) ends the session; bringup keeps running so
-the Go2 stays connected for the next one (`make down` stops it).
+Everything between the two Enters is in the bag, pointing gesture included. Point at the target at
+the start of the recording and keep driving afterwards: those first frames are the ones that show
+what "that" meant. The instruction and the name are typed after the recording, so taking a moment
+over them costs nothing.
 
-Recording starts at the first Enter, so the pointing gesture made while typing is in the bag. Point
-at the target for that whole window: those are the frames that show what "that" meant.
+Nothing is discarded: to drop an episode, delete its folder; to redo one, record it again and give
+it the same name. `q` (or Ctrl-C at the prompt) ends the session; bringup keeps running so the Go2
+stays connected for the next one (`make down` stops it). Ctrl-C while recording ends the recording,
+like Enter.
 
 ## Where it's saved
 
 On the laptop, in `DATA_DIR` (`.env`, default `./data`, never committed):
 
 ```
-data/sessions/session_20261012_153000/
+data/sessions/S1-R1/
   configs/                    copy of configs/ at the start (camera, topics, parameters)
   ep_001/
     ep_001_0.mcap             the bag: Orbbec JPEG frames, camera_info, odom, imu, tf, scan, stt ...
     metadata.yaml
-    episode.json              the typed instruction, start / go / end times, message counts, distance
+    episode.json              the typed instruction, start / end times, message counts, distance
   ep_002/ ...
-  discarded/ep_003/           discarded and cancelled episodes, kept just in case
+  door-again/                 whatever you named it at the prompt
   preview/                    written by make preview
 ```
+
+While an episode is recording its bag is `_recording/`; it is renamed to the name you type. A
+`_recording/` left behind by a crash is replaced by the next episode, so copy it out first if you
+want it (`ros2 bag reindex _recording mcap` to close it).
 
 Roughly 0.9 MB per second of episode. The topics recorded are `recorder.topics` in
 [configs/robots/roxy.yaml](../configs/robots/roxy.yaml). Copy finished sessions to the shared data store
@@ -66,15 +78,15 @@ Roughly 0.9 MB per second of episode. The topics recorded are `recorder.topics` 
 ## Checking what was recorded
 
 ```bash
-make preview                                   # latest session
-make preview SESSION=session_20261012_153000
+make preview                 # the session recorded last
+make preview SESSION=S1-R1
 ```
 
 Prints a summary per episode and opens `preview/index.html`: per episode the instruction, a video of
-the frames, thumbnails (while the instruction was typed vs while driving), the odometry path from
-above, how it was driven (distance, net turn, total turning, sideways, reverse) and every topic in the
-bag with its rate and first message. A checklist at the top says whether every kept episode has the
-raw data: frames, instruction, odometry, camera intrinsics.
+the frames, thumbnails, the odometry path from above, how it was driven (distance, net turn, total
+turning, sideways, reverse) and every topic in the bag with its rate and first message. A checklist
+at the top says whether every episode has the raw data: frames, instruction, odometry, camera
+intrinsics.
 
 Do a few episodes, `q`, `make preview`, and look before collecting a lot. A single `.mcap` can also be
 opened in Foxglove (Open local file) to scrub through every topic.

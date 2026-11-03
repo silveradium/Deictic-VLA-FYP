@@ -98,8 +98,8 @@ orbbec-view: ## Watch the Pi's Orbbec colour feed in a browser, with its FOV (ht
 		python3 /deictic/scripts/orbbec_view.py --port $(or $(PORT),8090)
 
 # --- data collection (docs/collection_protocol.md) -----------------------------
-preview: ## Look inside a session's episode bags: video, odom path, driving summary, topics (SESSION=..., default latest)
-	@s="$(SESSION)"; [ -n "$$s" ] || s=$$(ls -1 $(DATA_DIR)/sessions 2>/dev/null | tail -1); \
+preview: ## Look inside a session's episode bags: video, odom path, driving summary, topics (SESSION=..., default: last recorded)
+	@s="$(SESSION)"; [ -n "$$s" ] || s=$$(ls -1t $(DATA_DIR)/sessions 2>/dev/null | head -1); \
 	test -n "$$s" || { echo "no sessions in $(DATA_DIR)/sessions"; exit 1; }; \
 	$(STACK_COLLECT) run --rm --no-deps -T recorder python3 /deictic/data_pipeline/validate/preview.py \
 		/deictic/data/sessions/$$s \

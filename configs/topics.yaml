@@ -49,4 +49,4 @@ voice:  # spoken replies (ros_ws/src/voice on the bringup machine, speaker on th
   voice/preset:   {type: std_msgs/msg/String,          qos: latched,  from: tts_node, note: 'scooby | robot; dialog_node talks in the matching style'}
 
 episode:  # data collection (ros_ws/src/recorder, `make collect`)
-  episode/event:   {type: std_msgs/msg/String, qos: reliable, from: recorder (collect), note: 'JSON per listen / go / end, also written into each episode bag; the instruction is in go'}
+  episode/event:   {type: std_msgs/msg/String, qos: reliable, from: recorder (collect), note: 'JSON per start / end of a recording, also written into that episode bag (the instruction is in episode.json)'}

@@ -2,14 +2,17 @@
 
   make collect     (starts bringup if it isn't running, then this, in the foreground)
 
-  Enter    new episode: recording starts. Point at the target and type the instruction
-           ("go to that door")
-  Enter    instruction done: drive Roxy to the target with the remote
-  Ctrl-C   end the episode, then Enter = keep, d = discard, e = edit the instruction
-  q        quit (Ctrl-C at the prompt does the same)
+  session name  asked once, at the very start: S1-R1. A new name makes a new session folder, a
+                name that already exists adds episodes to that folder
+  Enter         new episode: recording starts. Point at the target, then drive Roxy to it
+  Enter         Roxy has stopped: recording ends
+  instruction   typed after the recording ("go to that door"), it does not matter when
+  episode name  typed next: a new name is a new episode, an existing one is overwritten
+  q             quit (Ctrl-C at the prompt does the same)
 
-Recording starts at the first Enter, not the second, so the frames of the pointing gesture are in
-the bag. The instruction is typed by hand (no mic); left empty, it is typed after the episode.
+The whole episode is recorded, pointing gesture included, from the first Enter to the second. The
+instruction and the name are typed afterwards, so neither eats into the recording. Nothing is
+discarded here: to drop an episode, delete its folder, or record it again under the same name.
 
 Only raw data is saved: the instruction, every topic in recorder.topics, and the times. No action
 labels are computed here or by `make preview` -- the label format is still open, and odometry in the
@@ -20,20 +23,20 @@ decoded, with the publisher's QoS), so recording starts instantly; messages are 
 an episode runs. Latched topics (tf_static) are written again at the start of every episode.
 
 Layout under data_dir:
-  sessions/session_YYYYmmdd_HHMMSS/
+  sessions/S1-R1/
     configs/            copy of configs/ when the session started
     ep_001/             rosbag2 (mcap) + episode.json: instruction, times, counts
-    discarded/ep_002/   discarded or cancelled episodes, kept just in case
+    door-again/         any name typed at the prompt
 """
 
 import json
 import math
 import os
+import re
 import shutil
 import threading
 import time
 from collections import defaultdict, deque
-from datetime import datetime
 
 import rclpy
 import rosbag2_py
@@ -50,6 +53,8 @@ CAMERA = "/orbbec/color/image_raw/compressed"
 ODOM = "/odom"
 EVENT = "/episode/event"
 RATE_WINDOW = 3.0  # s, for the live rates
+TMP = "_recording"  # the bag folder while an episode runs, before it has a name
+RESERVED = {"configs", "preview", "discarded", TMP}  # the session folder's own, never episodes
 
 
 def yaw_deg(q) -> float:
@@ -183,12 +188,26 @@ class Collector(Node):
                 self._write(EVENT, serialize_message(msg), time.time())
 
 
+
+
 class Terminal:
     def __init__(self, node, session, session_dir):
         self.node, self.session, self.session_dir = node, session, session_dir
-        self.n = 0
-        self.kept, self.discarded = [], []
+        self.recorded = []
 
+    # ---------------- episode folders ----------------
+    def episodes(self):
+        """The episode folders already in the session folder."""
+        return sorted(d for d in os.listdir(self.session_dir)
+                      if d not in RESERVED and not d.startswith(".")
+                      and os.path.isdir(os.path.join(self.session_dir, d)))
+
+    def next_name(self):
+        """ep_NNN after the highest ep_NNN already there, the default episode name."""
+        used = [int(m.group(1)) for m in (re.fullmatch(r"ep_(\d+)", d) for d in self.episodes()) if m]
+        return f"ep_{max(used, default=0) + 1:03d}"
+
+    # ---------------- status ----------------
     def status(self):
         n = self.node
         odom, cam = n.rate(ODOM), n.rate(CAMERA)
@@ -208,110 +227,138 @@ class Terminal:
 
     def run(self):
         print(f"\nSession {self.session}\n  -> {self.session_dir}")
+        here = self.episodes()
+        if here:
+            print(f"  {len(here)} episode(s) already in it: {', '.join(here)}")
         self.wait_ready()
         while True:
             line, problems = self.status()
-            print(f"\n[{line}]  kept {len(self.kept)}, discarded {len(self.discarded)}")
+            print(f"\n[{line}]  {len(self.recorded)} episode(s) recorded this run")
             for p in problems:
                 print(f"  ! {p}")
             try:
-                cmd = input(f"Episode {self.n + 1}: [Enter] start   [q] quit > ").strip().lower()
+                cmd = input(f"Next episode ({self.next_name()}): [Enter] start   [q] quit > ").strip().lower()
             except (KeyboardInterrupt, EOFError):
                 print()
                 break
             if cmd in ("q", "quit", "exit"):
                 break
             self.episode()
-        print(f"\nSession {self.session}: {len(self.kept)} episodes kept, {len(self.discarded)} discarded")
+        print(f"\nSession {self.session}: {len(self.recorded)} episode(s) this run, "
+              f"{len(self.episodes())} in the folder")
         print(f"  {self.session_dir}")
         print("  make preview    to look inside the bags")
         print("  bringup is still running (the Go2 stays connected): make down to stop it")
 
+    # ---------------- one episode ----------------
     def episode(self):
         node = self.node
-        self.n += 1
-        name = f"ep_{self.n:03d}"
-        path = os.path.join(self.session_dir, name)
-        node.open_bag(path)
-        t_listen = time.time()
-        node.event(event="listen", episode=self.n)
-        print(f"\n● REC {name}  point at the target, type the instruction, then Enter")
-        try:
-            instruction = input("  instruction > ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print()
-            node.event(event="end", episode=self.n, reason="cancelled")
-            node.close_bag()
-            self.discard(name, path, None)
-            print("  cancelled (in discarded/)")
-            return
-        t_go = time.time()
-        node.event(event="go", episode=self.n, instruction=instruction)
-        print(f'  instruction: "{instruction}"' if instruction
-              else "  (no instruction: type it after the episode)")
-        print("  DRIVE Roxy to the target with the remote, Ctrl-C when it has stopped")
-        try:
-            while True:
-                time.sleep(0.5)
-                turned = node.turned()
-                motion = "no odom" if math.isnan(turned) else f"{node.path_m:.2f} m driven, turned {turned:+.0f} deg"
-                print(f"\r  {time.time() - t_listen:5.1f} s | {node.counts.get(CAMERA, 0)} frames | "
-                      f"odom {node.rate(ODOM):.0f} Hz | {motion}   ", end="", flush=True)
-        except KeyboardInterrupt:
-            print()
+        tmp = os.path.join(self.session_dir, TMP)
+        if os.path.isdir(tmp):  # left behind by a crash
+            shutil.rmtree(tmp)
+        node.open_bag(tmp)
+        t_start = time.time()
+        node.event(event="start", session=self.session)
+        print("\n● REC  point at the target, then drive Roxy to it with the remote:")
+        print("       turn and walk forward, no strafing, no reversing")
+        print("       Enter when it has stopped")
+        self.wait_enter(t_start)
         t_end = time.time()
-        node.event(event="end", episode=self.n, reason="ctrl-c")
+        node.event(event="end", session=self.session)
         counts, motion = node.close_bag()
+        print(f"  ■ {t_end - t_start:.1f} s, {counts.get(CAMERA, 0)} frames, "
+              f"{motion.get('path_m', 0):.2f} m driven")
+        if not counts.get(CAMERA, 0):
+            print("  ! no camera frames in this episode")
+        if not counts.get(ODOM, 0):
+            print("  ! no odometry in this episode: no action labels")
 
-        meta = {"session": self.session, "episode": self.n, "instruction": instruction,
-                "t_listen": round(t_listen, 3), "t_go": round(t_go, 3), "t_end": round(t_end, 3),
-                "listen_s": round(t_go - t_listen, 2), "drive_s": round(t_end - t_go, 2),
+        instruction = self.ask_instruction()
+        name = self.ask_name()
+        meta = {"session": self.session, "episode": name, "instruction": instruction,
+                "t_start": round(t_start, 3), "t_end": round(t_end, 3),
+                "duration_s": round(t_end - t_start, 2),
                 "frames": counts.get(CAMERA, 0), "odom_msgs": counts.get(ODOM, 0),
                 **motion, "topics": counts}
-        if not meta["frames"]:
-            print("  ! no camera frames in this episode")
-        if not meta["odom_msgs"]:
-            print("  ! no odometry in this episode: no action labels")
-        self.review(name, path, meta)
+        path = self.store(tmp, name)
+        self.save_meta(path, meta)
+        self.recorded.append(name)
+        print(f"  {name} saved: {meta['duration_s']:.1f} s, {meta['frames']} frames, "
+              f"{meta.get('path_m', 0):.2f} m")
 
-    def review(self, name, path, meta):
-        while True:
-            if not meta["instruction"]:
-                print("  no instruction yet: e to type it, d to discard")
+    def wait_enter(self, t_start):
+        """Show the live status until Enter (or Ctrl-C) ends the episode."""
+        stop = threading.Event()
+        ticker = threading.Thread(target=self.ticker, args=(t_start, stop), daemon=True)
+        ticker.start()
+        try:
+            input()
+        except (KeyboardInterrupt, EOFError):
+            pass
+        finally:
+            stop.set()
+            ticker.join(timeout=1.0)
+        print()
+
+    def ticker(self, t_start, stop):
+        node = self.node
+        while not stop.wait(0.5):
+            turned = node.turned()
+            motion = "no odom" if math.isnan(turned) else f"{node.path_m:.2f} m driven, turned {turned:+.0f} deg"
+            print(f"\r  {time.time() - t_start:5.1f} s | {node.counts.get(CAMERA, 0)} frames | "
+                  f"odom {node.rate(ODOM):.0f} Hz | {motion}   ", end="", flush=True)
+
+    def ask_instruction(self):
+        """What was pointed at, typed after the recording. Empty is allowed, but asked twice."""
+        for first in (True, False):
             try:
-                ans = input("  [Enter] keep   [d] discard   [e] edit instruction > ").strip().lower()
+                text = input("  instruction > ").strip()
             except (KeyboardInterrupt, EOFError):
                 print()
-                ans = "" if meta["instruction"] else "d"
-            if ans == "d":
-                self.discard(name, path, meta)
-                print(f"  {name} discarded (in discarded/)")
-                return
-            if ans == "e":
-                try:
-                    text = input("  instruction > ").strip()
-                except (KeyboardInterrupt, EOFError):
-                    text = ""
-                if text:
-                    meta["instruction"] = text
-                    print(f'  instruction: "{text}"')
-                continue
-            if ans == "" and meta["instruction"]:
-                meta["kept"] = True
-                self.save_meta(path, meta)
-                self.kept.append(name)
-                print(f"  {name} saved: {meta['listen_s'] + meta['drive_s']:.1f} s, {meta['frames']} frames, "
-                      f"{meta.get('path_m', 0):.2f} m")
-                return
+                return ""
+            if text or not first:
+                return text
+            print("  ! the episode is unusable without one; Enter again to leave it empty")
+        return ""
 
-    def discard(self, name, path, meta):
-        if meta is not None:
-            meta["kept"] = False
-            self.save_meta(path, meta)
-        dest = os.path.join(self.session_dir, "discarded")
-        os.makedirs(dest, exist_ok=True)
-        shutil.move(path, os.path.join(dest, name))
-        self.discarded.append(name)
+    def ask_name(self):
+        """The folder the episode is saved in. An existing name overwrites that episode."""
+        default = self.next_name()
+        while True:
+            try:
+                typed = input(f"  episode name [{default}] > ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print()
+                return default
+            name = clean_name(typed) if typed else default
+            if not name:
+                print("  ! letters, digits, - and _ please")
+                continue
+            if name in RESERVED:
+                print(f"  ! {name} is the session folder's own, pick another name")
+                continue
+            if typed and name != typed:
+                print(f"  using {name}")
+            if os.path.isdir(os.path.join(self.session_dir, name)):
+                print(f"  {name} already exists: overwriting it")
+            return name
+
+    def store(self, tmp, name):
+        """Move the closed bag into its episode folder, renaming the bag files with it."""
+        dest = os.path.join(self.session_dir, name)
+        if os.path.isdir(dest):
+            shutil.rmtree(dest)
+        shutil.move(tmp, dest)
+        for f in os.listdir(dest):
+            if f.startswith(TMP):
+                os.rename(os.path.join(dest, f), os.path.join(dest, name + f[len(TMP):]))
+        metadata = os.path.join(dest, "metadata.yaml")
+        if os.path.isfile(metadata):  # it holds the bag files' names
+            with open(metadata) as f:
+                text = f.read()
+            with open(metadata, "w") as f:
+                f.write(text.replace(TMP, name))
+        return dest
 
     @staticmethod
     def save_meta(path, meta):
@@ -319,8 +366,31 @@ class Terminal:
             json.dump(meta, f, indent=2)
 
 
+def clean_name(text) -> str:
+    """A folder name from typed text: "S1 R1" -> "S1-R1", nothing hidden or nested."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", text.strip()).strip("-.")
+
+
+def ask_session(sessions_dir) -> str | None:
+    """The session, asked once at the start. An existing name adds episodes to that folder."""
+    while True:
+        try:
+            typed = input("Session name (e.g. S1-R1) > ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return None
+        name = clean_name(typed)
+        if not name:
+            print("  ! letters, digits, - and _ please")
+            continue
+        if name != typed:
+            print(f"  using {name}")
+        print(f"  {'session exists: adding episodes to it' if os.path.isdir(os.path.join(sessions_dir, name)) else 'new session'}")
+        return name
+
+
 def main():
-    # Python's own SIGINT handling: Ctrl-C ends an episode instead of shutting ROS down
+    # Python's own SIGINT handling: Ctrl-C at a prompt quits instead of shutting ROS down
     rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = Collector()
     executor = SingleThreadedExecutor()
@@ -328,13 +398,15 @@ def main():
     spin_thread = threading.Thread(target=executor.spin, daemon=True)
     spin_thread.start()
 
-    session = datetime.now().strftime("session_%Y%m%d_%H%M%S")
-    session_dir = os.path.join(node.data_dir, "sessions", session)
-    os.makedirs(session_dir)
-    if os.path.isdir(node.config_dir):
-        shutil.copytree(node.config_dir, os.path.join(session_dir, "configs"))
     try:
-        Terminal(node, session, session_dir).run()
+        sessions_dir = os.path.join(node.data_dir, "sessions")
+        session = ask_session(sessions_dir)
+        if session is not None:
+            session_dir = os.path.join(sessions_dir, session)
+            os.makedirs(session_dir, exist_ok=True)
+            if os.path.isdir(node.config_dir):
+                shutil.copytree(node.config_dir, os.path.join(session_dir, "configs"), dirs_exist_ok=True)
+            Terminal(node, session, session_dir).run()
     finally:
         if node.writer is not None:
             node.close_bag()

@@ -12,7 +12,7 @@ is who publishes `cmd_vel`.
 ```bash
 make setup        # .env from .env.example, submodules, build the x86 images
 $EDITOR .env      # GO2_IP, GO2_AES_KEY (per-device, firmware >= 1.1.15), DDS_IFACE
-make collect      # data collection from the terminal: Enter, speak, Enter, drive, Ctrl-C; one bag per episode
+make collect      # data collection from the terminal: name the session, Enter, point and drive, Enter; one bag per episode
 make infer        # same + NaVILA server (GPU machine)
 make help         # all targets
 ```

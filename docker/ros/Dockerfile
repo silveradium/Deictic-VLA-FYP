@@ -30,7 +30,7 @@ WORKDIR /opt/go2_ws
 # torch/torchvision are only used by coco_detector, which is not built
 COPY --from=go2_sdk requirements.txt /tmp/go2_requirements.txt
 RUN grep -vE '^(torch|torchvision)\b' /tmp/go2_requirements.txt > /tmp/go2_req.txt \
-    && pip3 install -r /tmp/go2_req.txt
+    && pip3 install --retries 10 --timeout 60 -r /tmp/go2_req.txt
 
 COPY --from=go2_sdk --exclude=**/.git --exclude=*.ply . src/go2_ros2_sdk
 RUN touch src/go2_ros2_sdk/coco_detector/COLCON_IGNORE \
@@ -50,13 +50,13 @@ ENV PYTHONPATH=/opt/navila
 
 # Mic speech-to-text for audio_stt (Moonshine, CPU; portaudio comes from apt above). numpy stays
 # on 1.x, which ROS Humble's compiled Python modules and go2's requirements both need.
-RUN pip3 install "numpy<2" moonshine-voice
+RUN pip3 install --retries 10 --timeout 60 "numpy<2" moonshine-voice
 
 # Spoken replies for voice: Gemini client, Piper TTS (+ the voice, baked in) and sox for the
 # voice effects. Same numpy pin.
 RUN apt-get update && apt-get install -y --no-install-recommends sox \
     && rm -rf /var/lib/apt/lists/* \
-    && pip3 install "numpy<2" piper-tts google-genai \
+    && pip3 install --retries 10 --timeout 60 "numpy<2" piper-tts google-genai \
     && python3 -m piper.download_voices --data-dir /opt/piper-voices en_US-ryan-medium
 
 # --- our packages overlay ---

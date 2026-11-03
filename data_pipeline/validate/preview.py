@@ -1,13 +1,13 @@
 """Look inside a collection session before collecting more: what each episode bag really contains.
 
-  make preview                                  # the latest session in DATA_DIR
-  make preview SESSION=session_20261012_153000
+  make preview                 # the session in DATA_DIR that was recorded last
+  make preview SESSION=S1-R1
 
-Runs in the ROS image (rosbag2_py). For every episode (ep_*/ and discarded/ep_*/) it reads the bag
-and episode.json, prints a summary, and writes <session>/preview/:
-  index.html     per episode: the typed instruction, a video of the Orbbec frames, thumbnails
-                 (instruction / driving), the odometry path from above with a summary of how it was
-                 driven (data_pipeline/real/path_stats.py), and every topic in the bag with its rate
+Runs in the ROS image (rosbag2_py). For every episode folder in the session (whatever it was named
+at the prompt) it reads the bag and episode.json, prints a summary, and writes <session>/preview/:
+  index.html     per episode: the typed instruction, a video of the Orbbec frames, thumbnails,
+                 the odometry path from above with a summary of how it was driven
+                 (data_pipeline/real/path_stats.py), and every topic in the bag with its rate
                  and a sample message, so you can see exactly what is saved
   ep_001.mp4     the episode's frames (needs ffmpeg, which the ROS image has)
   ep_001_*.jpg   thumbnails, the recorded JPEGs as they are
@@ -37,6 +37,7 @@ CAMERA = "/orbbec/color/image_raw/compressed"
 ODOM = "/odom"
 EVENT = "/episode/event"
 N_THUMBS = 8
+NOT_EPISODES = {"configs", "preview", "discarded", "_recording"}  # the session folder's own
 
 
 def yaw_deg(q):
@@ -132,8 +133,8 @@ def analyse(ep_dir: Path, out: Path, discarded: bool):
         return {"name": name, "discarded": discarded, "meta": meta,
                 "problems": ["bag not closed (no metadata.yaml): ros2 bag reindex <dir> mcap"]}
     types, stamps, samples, frames, odom, events = read_episode(ep_dir)
-    t_listen = meta.get("t_listen") or (frames[0][0] if frames else 0)
-    t_go = meta.get("t_go") or t_listen
+    t_start = meta.get("t_start") or meta.get("t_listen") or (frames[0][0] if frames else 0)
+    t_go = meta.get("t_go") or t_start  # older sessions typed the instruction inside the episode
     t_end = meta.get("t_end") or (frames[-1][0] if frames else t_go)
 
     stats = path_stats([p for p in odom if p[0] >= t_go])
@@ -156,7 +157,8 @@ def analyse(ep_dir: Path, out: Path, discarded: bool):
             t, jpeg = frames[i]
             fname = f"{name}_{i:04d}.jpg"
             (out / fname).write_bytes(jpeg)
-            thumbs.append((fname, t - t_listen, "instruction" if t < t_go else "driving"))
+            phase = "" if t_go <= t_start else ("instruction" if t < t_go else "driving")
+            thumbs.append((fname, t - t_start, phase))
     video = f"{name}.mp4" if write_video(frames, out / f"{name}.mp4") else None
 
     topics = []
@@ -169,7 +171,7 @@ def analyse(ep_dir: Path, out: Path, discarded: bool):
         topics.append((topic, types[topic], len(stamps[topic]), hz, gap, sample))
 
     return {"name": name, "discarded": discarded, "meta": meta, "events": events,
-            "duration": t_end - t_listen, "listen": t_go - t_listen, "drive": t_end - t_go,
+            "duration": t_end - t_start, "listen": t_go - t_start, "drive": t_end - t_go,
             "frames": len(frames), "fps": fps, "cam_gap": cam_gap, "odom_n": len(odom),
             "odom_hz": odom_hz, "stats": stats, "problems": problems, "thumbs": thumbs,
             "video": video, "svg": path_svg(odom), "topics": topics}
@@ -181,7 +183,8 @@ def print_summary(eps):
         tag = "  DISCARDED" if e["discarded"] else ""
         print(f"\n{e['name']}{tag}  {m.get('instruction', '')!r}")
         if "frames" in e:
-            print(f"  {e['duration']:.1f} s ({e['listen']:.1f} typing + {e['drive']:.1f} driving) | "
+            split = f" ({e['listen']:.1f} typing + {e['drive']:.1f} driving)" if e["listen"] > 0.05 else ""
+            print(f"  {e['duration']:.1f} s{split} | "
                   f"{e['frames']} frames, {e['fps']:.1f} fps | odom {e['odom_n']} msgs, {e['odom_hz']:.1f} Hz")
             s = e["stats"]
             print(f"  driven {s.distance_m:.2f} m, net turn {s.net_turn_deg:+.0f} deg "
@@ -232,13 +235,15 @@ def esc(s):
 
 def episode_html(e):
     m = e["meta"]
-    badge = '<span class="badge bad">discarded</span>' if e["discarded"] else '<span class="badge ok">kept</span>'
+    badge = '<span class="badge bad">discarded</span>' if e["discarded"] else ""
     if "frames" not in e:
         return (f'<section class="card"><div class="head"><h2>{esc(e["name"])}</h2>{badge}</div>'
                 + "".join(f'<p class="warn">{esc(p)}</p>' for p in e["problems"]) + "</section>")
     s = e["stats"]
-    facts = [("duration", f"{e['duration']:.1f} s"), ("instruction typed in", f"{e['listen']:.1f} s"),
-             ("driving", f"{e['drive']:.1f} s"), ("camera", f"{e['frames']} frames, {e['fps']:.1f} fps"),
+    split = ([("instruction typed in", f"{e['listen']:.1f} s"), ("driving", f"{e['drive']:.1f} s")]
+             if e["listen"] > 0.05 else [])  # older sessions only
+    facts = [("duration", f"{e['duration']:.1f} s"), *split,
+             ("camera", f"{e['frames']} frames, {e['fps']:.1f} fps"),
              ("max frame gap", f"{e['cam_gap']:.2f} s"), ("odometry", f"{e['odom_n']} msgs, {e['odom_hz']:.1f} Hz"),
              ("driven", f"{s.distance_m:.2f} m"), ("net turn", f"{s.net_turn_deg:+.0f} deg"),
              ("turning in all", f"{s.total_turn_deg:.0f} deg"),
@@ -248,7 +253,7 @@ def episode_html(e):
              else '<p class="muted">no video (ffmpeg missing or under 2 frames)</p>')
     thumbs = "".join(
         f'<figure><img src="{esc(f)}" alt="frame at {t:.1f} s" class="{ph}" loading="lazy">'
-        f'<figcaption>{t:+.1f} s, {ph}</figcaption></figure>' for f, t, ph in e["thumbs"])
+        f'<figcaption>{t:+.1f} s{f", {ph}" if ph else ""}</figcaption></figure>' for f, t, ph in e["thumbs"])
     rows = "".join(
         f"<tr><td>{esc(t)}<br><span class='muted'>{esc(ty)}</span></td><td>{n}</td><td>{hz:.1f}</td>"
         f"<td>{gap:.2f}</td><td><pre>{esc(sample)}</pre></td></tr>" for t, ty, n, hz, gap, sample in e["topics"])
@@ -275,19 +280,19 @@ def page_html(session, eps):
     kept = [e for e in eps if not e["discarded"]]
     ok = lambda f: all(f(e) for e in kept) if kept else False  # noqa: E731
     checks = [
-        ("RGB frames from the Orbbec in every kept episode", ok(lambda e: e.get("frames", 0) > 0)),
-        ("an instruction in every kept episode", ok(lambda e: bool(e["meta"].get("instruction")))),
-        ("odometry in every kept episode (what the labels will be derived from)", ok(lambda e: e.get("odom_n", 0) > 0)),
+        ("RGB frames from the Orbbec in every episode", ok(lambda e: e.get("frames", 0) > 0)),
+        ("an instruction in every episode", ok(lambda e: bool(e["meta"].get("instruction")))),
+        ("odometry in every episode (what the labels will be derived from)", ok(lambda e: e.get("odom_n", 0) > 0)),
         ("camera intrinsics (orbbec/color/camera_info)",
          ok(lambda e: any(t[0] == "/orbbec/color/camera_info" for t in e.get("topics", [])))),
-        ("no warnings in kept episodes", ok(lambda e: not e["problems"])),
+        ("no warnings in any episode", ok(lambda e: not e["problems"])),
     ]
     check_html = "".join(f"<li>{'&#9989;' if c else '&#10060;'} {esc(t)}</li>" for t, c in checks)
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(session)} preview</title>
 <style>{CSS}</style></head><body><main>
 <h1>{esc(session)}</h1>
-<p class="muted">{len(kept)} kept, {len(eps) - len(kept)} discarded. Raw data only: per episode the typed
+<p class="muted">{len(kept)} episode(s){f", {len(eps) - len(kept)} discarded" if len(eps) > len(kept) else ""}. Raw data only: per episode the typed
 instruction, the RGB frames and the odometry. No action labels are produced here &mdash; the label format is
 not settled yet, and odometry in the bag is enough to derive them later.</p>
 <ul class="check">{check_html}</ul>
@@ -301,18 +306,20 @@ def main():
     ap.add_argument("session", type=Path, help="session folder")
     args = ap.parse_args()
     session = args.session
-    ep_dirs = [(d, False) for d in sorted(session.glob("ep_*")) if d.is_dir()]
-    ep_dirs += [(d, True) for d in sorted((session / "discarded").glob("ep_*")) if d.is_dir()]
+    ep_dirs = [(d, False) for d in sorted(session.iterdir())
+               if d.is_dir() and d.name not in NOT_EPISODES and not d.name.startswith(".")]
+    ep_dirs += [(d, True) for d in sorted((session / "discarded").glob("*")) if d.is_dir()]  # older sessions
     if not ep_dirs:
         sys.exit(f"{session}: no episodes yet")
     out = session / "preview"
     out.mkdir(exist_ok=True)
-    eps = sorted((analyse(d, out, disc) for d, disc in ep_dirs), key=lambda e: e["name"])
+    eps = sorted((analyse(d, out, disc) for d, disc in ep_dirs),
+                 key=lambda e: (e["meta"].get("t_start") or e["meta"].get("t_listen") or 0, e["name"]))
     print_summary(eps)
     (out / "index.html").write_text(page_html(session.name, eps))
     kept = [e for e in eps if not e["discarded"]]
     usable = sum(1 for e in kept if not e["problems"])
-    print(f"\n{usable} of {len(kept)} kept episodes have no warnings")
+    print(f"\n{usable} of {len(kept)} episodes have no warnings")
     print(f"preview: {out / 'index.html'}")
 
 

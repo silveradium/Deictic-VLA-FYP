@@ -25,8 +25,8 @@ services:
       HOME: /tmp  # no home directory for HOST_UID in the image: ROS logs go to /tmp/.ros
     volumes:
       - ./configs:/deictic/configs:ro
-      - /etc/localtime:/etc/localtime:ro  # session names in local time
+      - /etc/localtime:/etc/localtime:ro  # episode times in local time
       - ${DATA_DIR:-./data}:/deictic/data
       - ./data_pipeline:/deictic/data_pipeline:ro  # make preview
-    # run directly, not through `ros2 run`, so Ctrl-C reaches it (it ends the episode)
+    # run directly, not through `ros2 run`, so Ctrl-C reaches it (it ends the recording)
     command: /ros2_ws/install/recorder/lib/recorder/collect --ros-args --params-file /deictic/configs/robots/roxy.yaml
