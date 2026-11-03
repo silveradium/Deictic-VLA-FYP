@@ -11,6 +11,10 @@
 Recording starts at the first Enter, not the second, so the frames of the pointing gesture are in
 the bag. The instruction is typed by hand (no mic); left empty, it is typed after the episode.
 
+Only raw data is saved: the instruction, every topic in recorder.topics, and the times. No action
+labels are computed here or by `make preview` -- the label format is still open, and odometry in the
+bag is enough to derive them later (data_pipeline/real/path_stats.py summarises the driving).
+
 Every topic in roxy.yaml recorder.topics is subscribed for the whole session (raw bytes, never
 decoded, with the publisher's QoS), so recording starts instantly; messages are only written while
 an episode runs. Latched topics (tf_static) are written again at the start of every episode.
@@ -44,7 +48,6 @@ from std_msgs.msg import String
 
 CAMERA = "/orbbec/color/image_raw/compressed"
 ODOM = "/odom"
-TRANSCRIPT = "/stt/transcript"
 EVENT = "/episode/event"
 RATE_WINDOW = 3.0  # s, for the live rates
 
@@ -62,12 +65,11 @@ class Collector(Node):
 
     def __init__(self):
         super().__init__("recorder")  # picks up the recorder block of roxy.yaml
-        topics = self.declare_parameter("topics", [CAMERA, ODOM, TRANSCRIPT]).value
-        self.grace = self.declare_parameter("listen_grace_s", 1.0).value
+        topics = self.declare_parameter("topics", [CAMERA, ODOM]).value
         self.data_dir = self.declare_parameter("data_dir", "/deictic/data").value
         self.config_dir = self.declare_parameter("config_dir", "/deictic/configs").value
-        # camera, odom and transcript are needed for the live status and the instruction anyway
-        self.wanted = {t if t.startswith("/") else "/" + t for t in topics} | {CAMERA, ODOM, TRANSCRIPT}
+        # camera and odom are needed for the live status anyway
+        self.wanted = {t if t.startswith("/") else "/" + t for t in topics} | {CAMERA, ODOM}
         self.wanted.discard(EVENT)  # written directly, never subscribed
 
         self.lock = threading.Lock()  # guards the writer: callbacks write, the terminal opens / closes
@@ -80,8 +82,6 @@ class Collector(Node):
         self.recent = defaultdict(deque)  # receive times of the last RATE_WINDOW s, per topic
         self.pose = None  # (x, y, yaw_deg)
         self.start_pose, self.path_m = None, 0.0  # of the open episode
-        self.heard = deque(maxlen=500)  # (t, text) from stt/transcript
-        self.on_heard = None  # set while listening
 
         self.event_pub = self.create_publisher(String, "episode/event", 10)
         self.create_timer(1.0, self.discover)
@@ -127,12 +127,6 @@ class Collector(Node):
                 elif self.pose is not None:
                     self.path_m += math.hypot(pose[0] - self.pose[0], pose[1] - self.pose[1])
             self.pose = pose
-        elif topic == TRANSCRIPT:
-            text = deserialize_message(data, String).data.strip()
-            if text:
-                self.heard.append((now, text))
-                if self.on_heard:
-                    self.on_heard(text)
         with self.lock:
             if self.writer is not None:
                 self._write(topic, data, now)
@@ -252,7 +246,6 @@ class Terminal:
             print("  cancelled (in discarded/)")
             return
         t_go = time.time()
-        heard = []
         node.event(event="go", episode=self.n, instruction=instruction)
         print(f'  instruction: "{instruction}"' if instruction
               else "  (no instruction: type it after the episode)")
@@ -271,7 +264,6 @@ class Terminal:
         counts, motion = node.close_bag()
 
         meta = {"session": self.session, "episode": self.n, "instruction": instruction,
-                "instruction_source": "typed" if instruction else "", "heard": heard,
                 "t_listen": round(t_listen, 3), "t_go": round(t_go, 3), "t_end": round(t_end, 3),
                 "listen_s": round(t_go - t_listen, 2), "drive_s": round(t_end - t_go, 2),
                 "frames": counts.get(CAMERA, 0), "odom_msgs": counts.get(ODOM, 0),
@@ -302,7 +294,6 @@ class Terminal:
                     text = ""
                 if text:
                     meta["instruction"] = text
-                    meta["instruction_source"] = "typed" if not meta["heard"] else "edited"
                     print(f'  instruction: "{text}"')
                 continue
             if ans == "" and meta["instruction"]:

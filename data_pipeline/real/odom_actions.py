@@ -11,7 +11,8 @@ again into chunks NaVILA could have said.
 NaVILA has no sideways or backward action: lateral drift and reversing are measured and reported, so
 the episode can be dropped or the driving fixed.
 
-Pure Python, no ROS: used by data_pipeline/validate/preview.py and data_pipeline/export/deictic_export.py.
+Pure Python, no ROS: used by data_pipeline/export/deictic_export.py (preview.py summarises the driving
+with data_pipeline/real/path_stats.py instead).
 """
 
 from __future__ import annotations

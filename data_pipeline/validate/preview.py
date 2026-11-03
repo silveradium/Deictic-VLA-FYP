@@ -5,11 +5,11 @@
 
 Runs in the ROS image (rosbag2_py). For every episode (ep_*/ and discarded/ep_*/) it reads the bag
 and episode.json, prints a summary, and writes <session>/preview/:
-  index.html     per episode: the instruction, a video of the Orbbec frames, thumbnails (listening /
-                 driving), what NaVILA's first decision sees (pointing frames + current frame,
-                 data_pipeline/real/navila_input.py), the odometry path from above, the NaVILA
-                 action labels derived from it (data_pipeline/real/odom_actions.py), and every topic
-                 in the bag with its rate and a sample message, so you can see exactly what is saved.
+  index.html     per episode: the typed instruction, a video of the Orbbec frames, thumbnails
+                 (instruction / driving), what NaVILA's first decision sees (pointing frames + current
+                 frame, data_pipeline/real/navila_input.py), the odometry path from above with a
+                 summary of how it was driven (data_pipeline/real/path_stats.py), and every topic in
+                 the bag with its rate and a sample message, so you can see exactly what is saved.
                  Every image has a dashed box: the part NaVILA keeps (image_mode crop)
   ep_001.mp4     the episode's frames (needs ffmpeg, which the ROS image has)
   ep_001_*.jpg   thumbnails, the recorded JPEGs as they are
@@ -34,7 +34,7 @@ from rosidl_runtime_py.utilities import get_message
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from data_pipeline.real.navila_input import crop_box, load_params, pick_gesture  # noqa: E402
-from data_pipeline.real.odom_actions import odom_to_actions  # noqa: E402
+from data_pipeline.real.path_stats import path_stats  # noqa: E402
 
 CAMERA = "/orbbec/color/image_raw/compressed"
 ODOM = "/odom"
@@ -153,7 +153,7 @@ def analyse(ep_dir: Path, out: Path, discarded: bool, params: dict):
     t_go = meta.get("t_go") or t_listen
     t_end = meta.get("t_end") or (frames[-1][0] if frames else t_go)
 
-    actions, stats = odom_to_actions([p for p in odom if p[0] >= t_go])
+    stats = path_stats([p for p in odom if p[0] >= t_go])
     fps, cam_gap = rate_stats(stamps.get(CAMERA, []))
     odom_hz, odom_gap = rate_stats(stamps.get(ODOM, []))
     problems = list(stats.warnings)
@@ -173,7 +173,7 @@ def analyse(ep_dir: Path, out: Path, discarded: bool, params: dict):
             t, jpeg = frames[i]
             fname = f"{name}_{i:04d}.jpg"
             (out / fname).write_bytes(jpeg)
-            thumbs.append((fname, t - t_listen, "listening" if t < t_go else "driving"))
+            thumbs.append((fname, t - t_listen, "instruction" if t < t_go else "driving"))
     # what NaVILA's first decision sees: the pointing frames, then the frame at t_go
     first_input, crop = [], None
     if frames:
@@ -204,7 +204,7 @@ def analyse(ep_dir: Path, out: Path, discarded: bool, params: dict):
     return {"name": name, "discarded": discarded, "meta": meta, "events": events,
             "duration": t_end - t_listen, "listen": t_go - t_listen, "drive": t_end - t_go,
             "frames": len(frames), "fps": fps, "cam_gap": cam_gap, "odom_n": len(odom),
-            "odom_hz": odom_hz, "actions": actions, "problems": problems, "thumbs": thumbs,
+            "odom_hz": odom_hz, "stats": stats, "problems": problems, "thumbs": thumbs,
             "first_input": first_input, "crop": crop, "video": video, "svg": path_svg(odom), "topics": topics}
 
 
@@ -214,10 +214,12 @@ def print_summary(eps):
         tag = "  DISCARDED" if e["discarded"] else ""
         print(f"\n{e['name']}{tag}  {m.get('instruction', '')!r}")
         if "frames" in e:
-            print(f"  {e['duration']:.1f} s ({e['listen']:.1f} listening + {e['drive']:.1f} driving) | "
+            print(f"  {e['duration']:.1f} s ({e['listen']:.1f} typing + {e['drive']:.1f} driving) | "
                   f"{e['frames']} frames, {e['fps']:.1f} fps | odom {e['odom_n']} msgs, {e['odom_hz']:.1f} Hz")
-            if e["actions"]:
-                print("  labels: " + ", ".join(a.text() for a in e["actions"]))
+            s = e["stats"]
+            print(f"  driven {s.distance_m:.2f} m, net turn {s.net_turn_deg:+.0f} deg "
+                  f"(turning {s.total_turn_deg:.0f} deg in all), sideways {s.lateral_m:.2f} m, "
+                  f"reverse {s.backward_m:.2f} m")
             n_pointing = sum(1 for *_, kind in e["first_input"] if kind == "pointing")
             print(f"  first decision: {n_pointing} pointing frames + the current one")
             print(f"  topics: {', '.join(t[0] for t in e['topics'])}")
@@ -245,14 +247,13 @@ video { width:100%; border-radius:8px; background:#000 }
 .facts div span { display:block; font-size:12px; color:var(--muted) }
 .thumbs { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; margin-top:12px }
 .thumbs figure { margin:0 } .thumbs img { width:100%; border-radius:6px; display:block }
-.thumbs figcaption { font-size:12px; color:var(--muted) } .listening { outline:2px solid var(--accent) }
+.thumbs figcaption { font-size:12px; color:var(--muted) } .instruction { outline:2px solid var(--accent) }
 .view { position:relative } .crop { position:absolute; border:2px dashed var(--bad); pointer-events:none }
 .path { width:100%; max-width:260px; background:var(--code); border-radius:8px }
 .path .axis { stroke:var(--line) } .path .trail { fill:none; stroke:var(--accent); stroke-width:2.5 }
 .path .start { fill:var(--ok) } .path .end { fill:var(--bad) } .path .heading { stroke:var(--bad); stroke-width:2.5 }
 .path .scale { fill:var(--muted); font-size:10px }
-.labels { font-family:ui-monospace,monospace; font-size:13px; background:var(--code); padding:8px 10px;
-  border-radius:6px; margin:8px 0 } .warn { color:var(--bad) }
+.warn { color:var(--bad) }
 table { width:100%; border-collapse:collapse; font-size:13px } td, th { text-align:left; padding:4px 8px;
   border-bottom:1px solid var(--line); vertical-align:top } pre { margin:0; font-size:12px; white-space:pre-wrap;
   background:var(--code); padding:6px; border-radius:6px; max-height:240px; overflow:auto }
@@ -281,18 +282,19 @@ def episode_html(e):
     if "frames" not in e:
         return (f'<section class="card"><div class="head"><h2>{esc(e["name"])}</h2>{badge}</div>'
                 + "".join(f'<p class="warn">{esc(p)}</p>' for p in e["problems"]) + "</section>")
-    facts = [("duration", f"{e['duration']:.1f} s"), ("listening", f"{e['listen']:.1f} s"),
+    s = e["stats"]
+    facts = [("duration", f"{e['duration']:.1f} s"), ("instruction typed in", f"{e['listen']:.1f} s"),
              ("driving", f"{e['drive']:.1f} s"), ("camera", f"{e['frames']} frames, {e['fps']:.1f} fps"),
              ("max frame gap", f"{e['cam_gap']:.2f} s"), ("odometry", f"{e['odom_n']} msgs, {e['odom_hz']:.1f} Hz"),
-             ("driven", f"{m.get('path_m', 0):.2f} m"), ("turned", f"{m.get('turned_deg', 0):+.0f} deg"),
-             ("instruction from", m.get("instruction_source", "?") or "?")]
-    heard = "".join(f"<li>{esc(h['text'])}</li>" for h in m.get("heard", []))
+             ("driven", f"{s.distance_m:.2f} m"), ("net turn", f"{s.net_turn_deg:+.0f} deg"),
+             ("turning in all", f"{s.total_turn_deg:.0f} deg"),
+             ("sideways", f"{s.lateral_m:.2f} m (max {s.max_lateral_m:.2f})"),
+             ("reverse", f"{s.backward_m:.2f} m")]
     video = (f'<video controls preload="metadata" src="{esc(e["video"])}"></video>' if e["video"]
              else '<p class="muted">no video (ffmpeg missing or under 2 frames)</p>')
     thumbs = "".join(figure(f, f"{t:+.1f} s, {ph}", ph, e["crop"]) for f, t, ph in e["thumbs"])
-    first = "".join(figure(f, f"{t:+.1f} s, {kind}", "listening" if kind == "pointing" else "", e["crop"])
+    first = "".join(figure(f, f"{t:+.1f} s, {kind}", "instruction" if kind == "pointing" else "", e["crop"])
                     for f, t, kind in e["first_input"])
-    labels = ", ".join(a.text() for a in e["actions"]) or "none (no odometry while driving)"
     rows = "".join(
         f"<tr><td>{esc(t)}<br><span class='muted'>{esc(ty)}</span></td><td>{n}</td><td>{hz:.1f}</td>"
         f"<td>{gap:.2f}</td><td><pre>{esc(sample)}</pre></td></tr>" for t, ty, n, hz, gap, sample in e["topics"])
@@ -308,8 +310,6 @@ def episode_html(e):
       red = where it stopped, line = its final heading.</p></div>
   </div>
   <div class="facts">{''.join(f'<div><span>{esc(k)}</span>{esc(v)}</div>' for k, v in facts)}</div>
-  <div><span class="muted">NaVILA labels from odometry:</span><div class="labels">{esc(labels)}</div></div>
-  {f'<div><span class="muted">STT heard while listening:</span><ul>{heard}</ul></div>' if heard else ''}
   <div><span class="muted">NaVILA's first decision sees these, pointing frames first. The person and where
     they point must be inside the dashed box, the part NaVILA keeps:</span><div class="thumbs">{first}</div></div>
   <div class="thumbs">{thumbs}</div>
@@ -325,7 +325,7 @@ def page_html(session, eps):
     checks = [
         ("RGB frames from the Orbbec in every kept episode", ok(lambda e: e.get("frames", 0) > 0)),
         ("an instruction in every kept episode", ok(lambda e: bool(e["meta"].get("instruction")))),
-        ("odometry in every kept episode (the source of the action labels)", ok(lambda e: e.get("odom_n", 0) > 0)),
+        ("odometry in every kept episode (what the labels will be derived from)", ok(lambda e: e.get("odom_n", 0) > 0)),
         ("camera intrinsics (orbbec/color/camera_info)",
          ok(lambda e: any(t[0] == "/orbbec/color/camera_info" for t in e.get("topics", [])))),
         ("no warnings in kept episodes", ok(lambda e: not e["problems"])),
@@ -335,8 +335,9 @@ def page_html(session, eps):
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(session)} preview</title>
 <style>{CSS}</style></head><body><main>
 <h1>{esc(session)}</h1>
-<p class="muted">{len(kept)} kept, {len(eps) - len(kept)} discarded. Fine-tuning NaVILA needs, per episode, the RGB
-frames, the instruction and the actions; the actions come from odometry.</p>
+<p class="muted">{len(kept)} kept, {len(eps) - len(kept)} discarded. Raw data only: per episode the typed
+instruction, the RGB frames and the odometry. No action labels are produced here &mdash; the export
+(data_pipeline/export) derives them from the odometry in NaVILA's wording.</p>
 <ul class="check">{check_html}</ul>
 <p class="muted">To scrub a raw bag topic by topic, open its <code>.mcap</code> in Foxglove (Open local file).</p>
 {''.join(episode_html(e) for e in eps)}
